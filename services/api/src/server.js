@@ -12,7 +12,7 @@ if(!process.env.SUPABASE_URL||!SUPABASE_SERVER_KEY) throw new Error('Missing Sup
 const supabase=createClient(process.env.SUPABASE_URL,SUPABASE_SERVER_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
 const ship={FAYOUM:35,CAIRO:50,GIZA:50,ALEXANDRIA:60,DELTA_CANAL:65,UPPER_EGYPT:75};
 import {calculatePrice} from './pricing.js';
-import {quoteSources,searchSourceFeeds} from './sourcing.js';
+import {quoteSources,searchSourceFeeds,publicSourceQuotes} from './sourcing.js';
 import {supplierRecord} from './suppliers.js';
 import {operationalAlerts} from './alerts.js';
 app.get('/admin/alerts',requireAdmin,async(req,res)=>{
@@ -38,7 +38,7 @@ const catalogSearch=async(req,res)=>{
   if(!config.length)return res.status(503).json({error:'external_search_not_configured'});
   const feeds=config.map(f=>({...f,token:f.tokenEnv?process.env[f.tokenEnv]:undefined}));
   const results=await searchSourceFeeds(req.method==='POST'?req.body.q:req.query.q,{feeds,referenceUrl:req.method==='POST'?req.body.referenceUrl:undefined});
-  const quotes=quoteSources(results.offers).map(({supplierId,pricing,...q})=>({...q,price:pricing?.finalPrice??null}));
+  const quotes=publicSourceQuotes(quoteSources(results.offers));
   res.json({quotes,sourcesChecked:results.sourcesChecked,sourcesUnavailable:results.sourcesUnavailable,preview:true});
  }catch{res.status(400).json({error:'external_search_unavailable'});}
 };

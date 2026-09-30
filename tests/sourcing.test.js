@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {quoteSources,searchSourceFeeds} from '../services/api/src/sourcing.js';
+import {quoteSources,searchSourceFeeds,publicSourceQuotes} from '../services/api/src/sourcing.js';
 const now=Date.now(),offer={productKey:'GTIN-EXACT-VARIANT',title:'منتج',currency:'EGP',verifiedMatch:true,marketMinQuantity:1,inStock:true,observedAt:new Date(now).toISOString(),marketTotal:200,supplierId:'supplier-1',purchaseCost:100,supplierShipping:10,directFulfillmentAgreed:true,allowsSingleUnits:true,minQuantity:1,priceBasis:'unit'};
 test('source selection uses delivered purchase cost and protected net margin',()=>{
  const rows=quoteSources([offer,{...offer,supplierId:'supplier-2',purchaseCost:95,supplierShipping:30}],{now});
@@ -26,4 +26,14 @@ test('customer reference links never become fetch targets or carry URL credentia
  await searchSourceFeeds('هاتف',{feeds:[{endpoint:'https://approved.invalid/feed'}],referenceUrl:'https://shop.invalid/product#section',fetchImpl});
  assert.equal(targets[0].host,'approved.invalid');assert.equal(targets[0].searchParams.get('reference_url'),'https://shop.invalid/product');
  for(const referenceUrl of ['http://shop.invalid/item','https://user:password@shop.invalid/item','not-a-url',123])await assert.rejects(searchSourceFeeds('هاتف',{feeds:[],referenceUrl,fetchImpl}));
+});
+
+test('public sourcing hides nonqualifying offers and internal procurement details',()=>{
+ const good=quoteSources([offer],{now})[0];
+ const blocked=quoteSources([{...offer,marketTotal:100}],{now})[0];
+ const missing=quoteSources([{...offer,directFulfillmentAgreed:false}],{now})[0];
+ const output=publicSourceQuotes([good,blocked,missing,{...good,pricing:{...good.pricing,mode:'emergency',profitRate:.03}}]);
+ assert.equal(output.length,1);assert.equal(output[0].price,good.pricing.finalPrice);
+ assert.equal('supplierId' in output[0],false);assert.equal('pricing' in output[0],false);
+ assert.equal(blocked.status,'margin_unavailable');
 });

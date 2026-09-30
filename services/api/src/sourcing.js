@@ -1,5 +1,10 @@
 import {calculatePrice,PAYMOB_CARD_PREVIEW} from './pricing.js';
 
+// Failed sourcing evaluations remain available to the review worker only.
+export function publicSourceQuotes(evaluations) {
+ return evaluations.filter(q=>q.status==='preview'&&q.pricing?.mode!=='emergency'&&Number.isFinite(q.pricing?.finalPrice)&&q.pricing.finalPrice>0&&q.pricing.profitRate>=.05-1e-8).map(q=>({productKey:q.productKey,title:q.title,status:'preview',price:q.pricing.finalPrice,comparisons:q.comparisons,provisional:true}));
+}
+
 // Offers are normalized by an approved feed adapter. Never match by title alone.
 export function quoteSources(offers,{now=Date.now(),paymentFees=PAYMOB_CARD_PREVIEW}={}) {
  const fresh=offers.filter(o=>o.currency==='EGP'&&typeof o.productKey==='string'&&o.productKey.length>0&&o.verifiedMatch===true&&o.marketMinQuantity===1&&o.inStock===true&&Number.isFinite(Date.parse(o.observedAt))&&now-Date.parse(o.observedAt)>=0&&now-Date.parse(o.observedAt)<=3600000&&Number.isFinite(o.marketTotal)&&o.marketTotal>0);
