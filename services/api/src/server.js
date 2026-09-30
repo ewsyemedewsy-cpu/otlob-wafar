@@ -12,6 +12,22 @@ if(!process.env.SUPABASE_URL||!SUPABASE_SERVER_KEY) throw new Error('Missing Sup
 const supabase=createClient(process.env.SUPABASE_URL,SUPABASE_SERVER_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
 const ship={FAYOUM:35,CAIRO:50,GIZA:50,ALEXANDRIA:60,DELTA_CANAL:65,UPPER_EGYPT:75};
 import {calculatePrice} from './pricing.js';
+import {quoteSources,searchSourceFeeds} from './sourcing.js';
+import {supplierRecord} from './suppliers.js';
+app.get('/admin/suppliers',requireAdmin,async(req,res)=>{res.set('Cache-Control','no-store');const {data,error}=await supabase.from('suppliers').select('*').order('name');if(error)return res.status(503).json({error:'supplier_directory_unavailable'});res.json(data||[])});
+app.post('/admin/suppliers',requireAdmin,async(req,res)=>{try{const row=supplierRecord(req.body||{});const {data,error}=await supabase.from('suppliers').insert(row).select('*').single();if(error)return res.status(503).json({error:'supplier_save_failed'});res.status(201).json(data)}catch{res.status(400).json({error:'invalid_supplier_record'})}});
+app.patch('/admin/suppliers/:id',requireAdmin,async(req,res)=>{try{const row=supplierRecord(req.body||{});const {data,error}=await supabase.from('suppliers').update(row).eq('id',req.params.id).select('*').single();if(error)return res.status(503).json({error:'supplier_save_failed'});res.json(data)}catch{res.status(400).json({error:'invalid_supplier_record'})}});
+app.get('/catalog/search',rateLimit(10,60_000),async(req,res)=>{
+ res.set('Cache-Control','no-store');
+ try{
+  const config=JSON.parse(process.env.APPROVED_SOURCE_FEEDS||'[]');
+  if(!config.length)return res.status(503).json({error:'external_search_not_configured'});
+  const feeds=config.map(f=>({...f,token:f.tokenEnv?process.env[f.tokenEnv]:undefined}));
+  const results=await searchSourceFeeds(req.query.q,{feeds});
+  const quotes=quoteSources(results.offers).map(({supplierId,pricing,...q})=>({...q,price:pricing?.finalPrice??null}));
+  res.json({quotes,sourcesChecked:results.sourcesChecked,sourcesUnavailable:results.sourcesUnavailable,preview:true});
+ }catch{res.status(400).json({error:'external_search_unavailable'});}
+});
 // A read-only order quote. It does not change catalog prices or activate payment fees.
 app.post('/admin/pricing/preview',requireAdmin,(req,res)=>{
  try{res.json({preview:true,...calculatePrice({...req.body,emergencyApproved:false})});}
@@ -21,7 +37,12 @@ app.get('/policies',async(req,res)=>{const {data,error}=await supabase.from('sto
 app.get('/capabilities',(req,res)=>res.json({onlinePayment:process.env.PAYMOB_ONLINE_ENABLED==='true'&&!!process.env.PAYMOB_SECRET_KEY&&!!process.env.PAYMOB_PUBLIC_KEY&&!!process.env.PAYMOB_INTEGRATION_IDS&&!!process.env.PAYMOB_NOTIFICATION_URL&&!!process.env.PAYMOB_REDIRECTION_URL}));
 app.get('/health',(req,res)=>res.json({ok:true,service:'emad-store-api',time:new Date().toISOString()}));
 app.get('/products',async(req,res)=>{try{const {data,error}=await supabase.from('products').select('id,sku,title_ar,category_id,image_url,retail_price,available,description_ar,stock_quantity,category:categories(slug)').eq('available',true).order('created_at',{ascending:false});if(error)throw error;res.json((data||[]).map(({category,...p})=>({...p,category_slug:category?.slug})));}catch(e){res.status(500).json({error:'products_failed'});}});
-app.get('/products/:id/compare',async(req,res)=>{try{const {data,error}=await supabase.rpc('public_price_compare',{p_product_id:req.params.id});if(error)throw error;res.json(data||[]);}catch(e){res.status(500).json({error:'compare_failed'});}});
+app.get('/products/:id/compare',async(req,res)=>{try{
+ const {data,error}=await supabase.rpc('public_price_compare',{p_product_id:req.params.id});if(error)throw error;
+ const observations=await supabase.from('competitors_pricing').select('competitor,price,source_url,observed_at').eq('product_id',req.params.id).eq('verified_match',true).gte('observed_at',new Date(Date.now()-48*3600000).toISOString()).order('observed_at',{ascending:false}).order('id',{ascending:false});
+ if(observations.error)throw observations.error;
+ res.json((data||[]).map(row=>({...row,...observations.data.find(x=>x.competitor===row.competitor&&Number(x.price)===Number(row.price))})));
+}catch(e){res.status(500).json({error:'compare_failed'});}});
 
 app.get('/admin/products',requireAdmin,async(req,res)=>{try{const {data,error}=await supabase.from('products').select('id,sku,title_ar,category_id,image_url,retail_price,supplier_cost,available,stock_quantity,description_ar,specifications,supplier_id,pricing_updated_at,created_at').order('created_at',{ascending:false});if(error)throw error;res.json(data||[]);}catch(e){res.status(500).json({error:'admin_products_failed'});}});
 app.post('/admin/products',requireAdmin,async(req,res)=>{try{const b=req.body||{};if(!b.sku||!b.title_ar||b.supplier_cost==null) return res.status(400).json({error:'sku,title_ar,supplier_cost required'});if(!Number.isFinite(Number(b.supplier_cost))||Number(b.supplier_cost)<=0||!Number.isFinite(Number(b.retail_price))||Number(b.retail_price)<Math.ceil(Number(b.supplier_cost)*1.055*100-1e-8)/100)return res.status(400).json({error:'price_below_normal_floor'});const row={sku:b.sku,title_ar:b.title_ar,category_id:b.category_id||null,image_url:b.image_url||null,retail_price:Number(b.retail_price||0),supplier_cost:Number(b.supplier_cost),available:b.available!==false,stock_quantity:b.stock_quantity==null?null:Number(b.stock_quantity),description_ar:String(b.description_ar||'').slice(0,5000),specifications:b.specifications||{},supplier_id:b.supplier_id||null};const {data,error}=await supabase.from('products').insert(row).select('id,sku,title_ar,category_id,image_url,retail_price,available').single();if(error)throw error;res.status(201).json(data);}catch(e){res.status(500).json({error:'admin_product_create_failed'});}});

@@ -6,3 +6,5 @@ apps/web/.env.local
 apps/web/dist/
 qa/
 __pycache__/
+
+supabase/.temp/

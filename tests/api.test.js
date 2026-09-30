@@ -6,6 +6,12 @@ test('HTTP guards prevent unauthorized admin/payment/invoice access and invalid 
  assert.equal((await fetch(base+'/health')).status,200);
  const capabilities=await(await fetch(base+'/capabilities')).json();assert.equal(capabilities.onlinePayment,false);
  assert.equal((await fetch(base+'/admin/products')).status,401);
+ assert.equal((await fetch(base+'/admin/suppliers')).status,401);
+ assert.equal((await fetch(base+'/admin/suppliers',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status,401);
+ assert.equal((await fetch(base+'/catalog/search?q=phone')).status,503);
+ assert.equal((await fetch(base+'/admin/pricing/preview',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status,401);
+ const quote=await fetch(base+'/admin/pricing/preview',{method:'POST',headers:{'content-type':'application/json','x-admin-key':'test-admin-key'},body:JSON.stringify({baseCost:1000,marketMin:1100,paymentFees:{rate:.0275,fixed:3,taxRate:0}})});
+ assert.equal(quote.status,200);assert.ok((await quote.json()).profitRate>=.05);
  assert.equal((await fetch(base+'/admin/kpis',{headers:{'x-admin-key':'wrong'}})).status,401);
  assert.equal((await fetch(base+'/payments/paymob/intention',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status,401);
  assert.equal((await fetch(base+'/orders/not-an-id/invoice')).status,403);
