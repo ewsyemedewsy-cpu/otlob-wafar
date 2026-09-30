@@ -1,0 +1,7 @@
+export function normalizeSearch(value='') { return String(value).normalize('NFKC').toLowerCase().replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/[\u064B-\u065F\u0670]/g,'').trim(); }
+export function filterCatalog(products,{query='',category='all',size='',color='',availability=false,sort='default',min='',max='',favorites=null}={}) {
+ const terms=normalizeSearch(query).split(/\s+/).filter(Boolean);
+ return products.filter(p=>{const s=p.specifications||{},text=normalizeSearch([p.title_ar,p.sku,p.description_ar,s.brand,s.model,s.color,s.size].join(' ')),price=Number(p.retail_price);return (!favorites||favorites.includes(p.id))&&(category==='all'||p.cat===category||p.category_slug===category)&&terms.every(t=>text.includes(t))&&(!size||String(s.size)===size)&&(!color||String(s.color)===color)&&(!availability||Number(p.stock_quantity)>0)&&(min===''||price>=Number(min))&&(max===''||price<=Number(max));}).sort((a,b)=>sort==='price-asc'?Number(a.retail_price)-Number(b.retail_price):sort==='price-desc'?Number(b.retail_price)-Number(a.retail_price):sort==='name'?String(a.title_ar).localeCompare(String(b.title_ar),'ar'):0);
+}
+export function productChoices(product,products){const key=product.specifications?.model_key;return key?products.filter(p=>p.specifications?.model_key===key):[product];}
+export function productImages(product){return [...new Set([product.image_url,...String(product.specifications?.gallery_urls||'').split('\n')].filter(url=>typeof url==='string'&&(/^(https?:\/\/|data:image\/)/.test(url))))].slice(0,10);}
