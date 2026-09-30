@@ -4,6 +4,7 @@ try{for(const width of [1440,390]){
  const context=await browser.newContext({viewport:{width,height:1000}});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));let suppliers=[];
  await page.route('https://store-api.example.invalid/**',async route=>{
   const req=route.request(),url=new URL(req.url());let body,status=200;
+  if(req.method()==='OPTIONS')return route.fulfill({status:204,headers:{'access-control-allow-origin':'*','access-control-allow-headers':'content-type,x-admin-key','access-control-allow-methods':'GET,POST,PATCH,OPTIONS'}});
   if(url.pathname.startsWith('/admin/')&&req.headers()['x-admin-key']!=='test-only-key'){body={error:'unauthorized'};status=401;}
   else if(url.pathname==='/admin/suppliers'){
    if(req.method()==='POST'){try{const row={id:'supplier-test',...supplierRecord(req.postDataJSON())};suppliers.push(row);body=row;status=201;}catch{body={error:'invalid_supplier_record'};status=400;}}

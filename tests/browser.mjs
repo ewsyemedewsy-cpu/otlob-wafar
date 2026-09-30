@@ -11,7 +11,7 @@ try{for(const viewport of [{width:1440,height:1000},{width:390,height:844}]){
  await page.locator('.cartbtn').click();await page.locator('#cart').waitFor({state:'visible'});assert.equal(await page.locator('#cart .cartrow').count(),1);
  assert.equal(await page.locator('#cart .checkout').isDisabled(),true);await page.locator('#cart .modalhead button').click();
  await page.getByRole('textbox',{name:'البحث عن منتج'}).fill('سماعة');assert.equal(await page.locator('.product').count(),1);await page.getByRole('textbox',{name:'البحث عن منتج'}).fill('');
- assert.ok(await page.locator('.brand-mark').evaluate(img=>img.complete&&img.naturalWidth>0));
+ assert.ok(await page.locator('header .brand-mark').evaluate(img=>img.complete&&img.naturalWidth>0));
  await page.getByRole('textbox',{name:'البحث عن منتج'}).fill('منتج غير موجود');await page.getByRole('button',{name:'ابحث خارج المتجر'}).click();await page.getByText('البحث الخارجي غير متاح الآن؛ يحتاج ربط مصادر الأسعار والموردين.').waitFor();await page.getByRole('textbox',{name:'البحث عن منتج'}).fill('');
  await page.getByRole('button',{name:'فحص ومقارنة'}).first().click();await page.getByText('المقارنة تحتاج اتصال المتجر؛ المنتجات المعروضة للتجربة.').waitFor();await page.locator('.comparebox').locator('..').locator('.modalhead button').click();
  await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:`qa/store-light-${viewport.width}.png`,fullPage:true});await page.getByRole('button',{name:'تبديل السمة'}).click();await page.screenshot({path:`qa/store-dark-${viewport.width}.png`,fullPage:true});
