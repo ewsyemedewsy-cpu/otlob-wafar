@@ -31,6 +31,7 @@ test('upgrade, orders, stock, payment atomicity, and role permissions',async()=>
  await db.query("update orders set status='processing' where id=$1",[order.id]);await db.query("update orders set status='cancelled' where id=$1",[order.id]);assert.equal((await db.query('select stock_quantity from products')).rows[0].stock_quantity,3);
  const privileges=(await db.query("select has_table_privilege('anon','products','SELECT') as cost_access,has_function_privilege('anon','create_order_v18(text,text,text,text,text,text,jsonb,uuid,text,boolean)','EXECUTE') as order_access")).rows[0];assert.equal(privileges.cost_access,false);assert.equal(privileges.order_access,false);
  const locked=(await db.query("select has_function_privilege('anon','claim_fulfillment_jobs(integer)','EXECUTE') as queue,has_function_privilege('authenticated','release_cancelled_stock_v18()','EXECUTE') as stock")).rows[0];assert.deepEqual(locked,{queue:false,stock:false});
+ const rls=(await db.query("select bool_and(relrowsecurity) as enabled from pg_class where oid in ('public.store_policies'::regclass,'public.admin_audit_log'::regclass)")).rows[0];assert.equal(rls.enabled,true);
  const boundary=(await db.query("insert into products(sku,title_ar,supplier_cost,retail_price)values('BOUNDARY','حد الربح',100,105.50)returning id")).rows[0].id;
  const floorOrder=await call(['boundary-order-key1',...args.slice(1,6),JSON.stringify([{product_id:boundary,quantity:1}])]);assert.equal(Number(floorOrder.total),155.5);
  }finally{await db.close()}

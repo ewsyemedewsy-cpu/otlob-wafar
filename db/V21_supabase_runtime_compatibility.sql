@@ -52,3 +52,5 @@ alter function public.set_updated_at() set search_path=public;
 alter view public.public_products set (security_invoker=true);
 revoke all on public.public_products from public,anon,authenticated;
 grant select on public.public_products to service_role;
+alter table public.store_policies enable row level security;
+alter table public.admin_audit_log enable row level security;
