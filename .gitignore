@@ -8,3 +8,4 @@ qa/
 __pycache__/
 
 supabase/.temp/
+var/

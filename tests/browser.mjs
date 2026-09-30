@@ -5,6 +5,7 @@ try{for(const viewport of [{width:1440,height:1000},{width:390,height:844}]){
  const context=await browser.newContext({viewport});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto((process.env.TEST_WEB_URL||'http://127.0.0.1:4173/'));await page.getByRole('heading',{name:'اكتشف ما يناسبك'}).waitFor();
  assert.equal(await page.locator('.product').count(),4);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ await page.getByRole('button',{name:'حفظ في المفضلة: خلاط كهربائي 1000 وات',exact:true}).click();await page.reload();await page.getByRole('button',{name:'المفضلة (1)',exact:true}).click();assert.equal(await page.locator('.product').count(),1);await page.getByRole('button',{name:'إزالة من المفضلة: خلاط كهربائي 1000 وات',exact:true}).click();assert.equal(await page.locator('.product').count(),0);await page.getByRole('button',{name:'عرض كل المنتجات (0)',exact:true}).click();assert.equal(await page.locator('.product').count(),4);
  await page.getByRole('button',{name:'تبديل السمة'}).click();assert.equal(await page.locator('html').getAttribute('data-theme'),'light');
  await page.reload();assert.equal(await page.locator('html').getAttribute('data-theme'),'light');
  await page.getByRole('button',{name:'أضف للسلة'}).first().click();await page.reload();assert.equal(await page.locator('.cartbtn span').textContent(),'1');
