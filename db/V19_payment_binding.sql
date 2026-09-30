@@ -33,4 +33,51 @@ declare o public.orders; pi public.payment_intents; inserted integer; effective 
 end $$;
 revoke all on function public.apply_paymob_event_v18(uuid,text,text,bigint,text,text,jsonb) from public,anon,authenticated;
 grant execute on function public.apply_paymob_event_v18(uuid,text,text,bigint,text,text,jsonb) to service_role;
+-- Reserve before contacting the provider. An ambiguous external result must be
+-- reconciled manually; never steal an expired creation claim and charge twice.
+create or replace function public.claim_paymob_creation(p_order_id uuid,p_token uuid)
+returns jsonb language plpgsql security invoker set search_path='' as $$
+declare o public.orders; pi public.payment_intents;
+begin
+ if p_token is null then raise exception 'token_required';end if;
+ select * into o from public.orders where id=p_order_id for update;
+ if not found or o.payment_method<>'wallet' or o.status in ('cancelled','returned','delivered')
+ or o.payment_status in ('paid','authorized','refunded','partially_refunded') then raise exception 'order_not_payable';end if;
+ select * into pi from public.payment_intents where order_id=p_order_id for update;
+ if found then
+  if pi.status in ('pending','requires_action') and pi.checkout_url is not null
+  and (pi.metadata->>'expires_at')::timestamptz>now() then
+   return jsonb_build_object('state','reused','checkout_url',pi.checkout_url,'id',pi.id,'status',pi.status);
+  end if;
+  return jsonb_build_object('state','review_required');
+ end if;
+ insert into public.payment_intents(order_id,provider,amount,currency,status,metadata)
+ values(p_order_id,'paymob',o.total,'EGP','pending',jsonb_build_object('creation_token',p_token,'claimed_at',now()));
+ return jsonb_build_object('state','claimed');
+end $$;
+
+create or replace function public.finish_paymob_creation(p_order_id uuid,p_token uuid,p_row jsonb)
+returns jsonb language plpgsql security invoker set search_path='' as $$
+declare o public.orders; pi public.payment_intents;
+begin
+ select * into o from public.orders where id=p_order_id for update;
+ if not found or o.payment_method<>'wallet' or o.status in ('cancelled','returned','delivered')
+ or o.payment_status in ('paid','authorized','refunded','partially_refunded') then raise exception 'order_not_payable';end if;
+ select * into pi from public.payment_intents where order_id=p_order_id for update;
+ if not found or p_token is null or pi.metadata->>'creation_token' is distinct from p_token::text
+ or pi.status<>'pending' or pi.provider_order_id is not null then raise exception 'creation_claim_mismatch';end if;
+ if nullif(p_row->>'provider_order_id','') is null or nullif(p_row->>'intention_id','') is null
+ or nullif(p_row->>'checkout_url','') is null or nullif(p_row->>'client_secret','') is null
+ or (p_row->>'amount')::numeric is distinct from o.total or p_row->>'currency' is distinct from 'EGP'
+ or (p_row->'metadata'->>'expires_at')::timestamptz is null then raise exception 'invalid_payment_intent';end if;
+ update public.payment_intents set provider_order_id=p_row->>'provider_order_id',intention_id=p_row->>'intention_id',
+ checkout_url=p_row->>'checkout_url',client_secret=p_row->>'client_secret',status='requires_action',
+ metadata=coalesce(p_row->'metadata','{}'::jsonb),updated_at=now() where id=pi.id;
+ update public.orders set payment_status='requires_action',payment_provider='paymob',payment_intent_id=pi.id where id=p_order_id;
+ return jsonb_build_object('id',pi.id,'status','requires_action');
+end $$;
+revoke all on function public.claim_paymob_creation(uuid,uuid),public.finish_paymob_creation(uuid,uuid,jsonb) from public,anon,authenticated;
+grant execute on function public.claim_paymob_creation(uuid,uuid),public.finish_paymob_creation(uuid,uuid,jsonb) to service_role;
+grant select,insert,update on public.payment_intents to service_role;
+grant select,update on public.orders to service_role;
 commit;

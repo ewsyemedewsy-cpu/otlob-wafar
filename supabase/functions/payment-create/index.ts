@@ -111,13 +111,19 @@ Deno.serve(async (req) => {
     redirection_url: PAYMENT_REDIRECTION_URL,
   };
 
+  const creationToken=crypto.randomUUID();
+  const claim=await admin.rpc('claim_paymob_creation',{p_order_id:orderId,p_token:creationToken});
+  if(claim.error)return json({error:'payment_claim_failed'},503);
+  if(claim.data?.state==='reused')return json({payment_intent_id:claim.data.id,checkout_url:claim.data.checkout_url,status:claim.data.status,reused:true});
+  if(claim.data?.state!=='claimed')return json({error:'payment_creation_requires_review'},409);
+
   const paymob = await fetch(`${PAYMOB_BASE}/v1/intention/`, {
     method: 'POST',
     headers: { Authorization: `Token ${PAYMOB_SECRET}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
   const result = await paymob.json().catch(() => ({}));
-  if (!paymob.ok) return json({ error: 'paymob_intention_failed', details: result }, 502);
+  if (!paymob.ok) return json({ error: 'paymob_intention_failed' }, 502);
 
   const intentionId = String(result.id || '');
   const clientSecret = String(result.client_secret || '');
@@ -139,9 +145,8 @@ Deno.serve(async (req) => {
     metadata: { order_number: orderNumber, expires_at: new Date(Date.now()+45*60*1000).toISOString() },
     updated_at: new Date().toISOString(),
   };
-  const { data: saved, error: saveError } = await admin.from('payment_intents').upsert(row, { onConflict: 'order_id' }).select('*').single();
+  const { data: saved, error: saveError } = await admin.rpc('finish_paymob_creation',{p_order_id:orderId,p_token:creationToken,p_row:row});
   if (saveError) return json({ error: 'payment_intent_save_failed' }, 500);
 
-  await admin.from('orders').update({ payment_status: 'requires_action', payment_provider: 'paymob', payment_intent_id: saved.id }).eq('id', orderId);
   return json({ payment_intent_id: saved.id, intention_id: intentionId, checkout_url: checkoutUrl, status: 'requires_action' });
 });
