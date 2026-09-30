@@ -48,6 +48,13 @@ Deno.serve(async (req) => {
   const ownerId = pick(order as Record<string, unknown>, ['user_id','customer_id','account_id']);
   if (!ownerId || ownerId !== user.id) return json({ error: 'forbidden' }, 403);
 
+  if (order.payment_method !== 'wallet' || ['cancelled','returned','delivered'].includes(order.status)) {
+    return json({ error: 'order_not_payable' }, 409);
+  }
+  if (['paid','authorized','refunded','partially_refunded'].includes(order.payment_status)) {
+    return json({ error: 'order_already_paid' }, 409);
+  }
+
   const paymentMethod = String(body.payment_method || 'online');
   if (paymentMethod === 'cod') return json({ error: 'cod_does_not_use_paymob' }, 400);
 
@@ -73,7 +80,8 @@ Deno.serve(async (req) => {
     state: pick(order as Record<string, unknown>, ['state','governorate'], 'EG'),
   };
 
-  const { data: orderItems } = await admin.from('order_items').select('*').eq('order_id', orderId).limit(50);
+  const { data: orderItems, error: itemsError } = await admin.from('order_items').select('*').eq('order_id', orderId).limit(50);
+  if (itemsError || !orderItems?.length) return json({ error: 'order_items_unavailable' }, 503);
   const sourceItems = Array.isArray((order as Record<string, unknown>).items) ? ((order as Record<string, unknown>).items as Array<Record<string, unknown>>) : (orderItems || []);
   const items = sourceItems.slice(0, 50).map((i: Record<string, unknown>) => ({
       name: pick(i, ['name','product_name'], 'Emad Store item').slice(0, 100),
@@ -83,7 +91,12 @@ Deno.serve(async (req) => {
     }));
 
   const existing = await admin.from('payment_intents').select('*').eq('order_id', orderId).maybeSingle();
-  if (existing.data?.status === 'paid') return json({ error: 'order_already_paid' }, 409);
+  if (existing.error) return json({ error: 'payment_intent_unavailable' }, 503);
+  if (['paid','authorized','refunded','partially_refunded'].includes(existing.data?.status)) return json({ error: 'order_already_paid' }, 409);
+  const expiresAt=Date.parse(existing.data?.metadata?.expires_at || '');
+  if (existing.data?.checkout_url && ['pending','requires_action'].includes(existing.data.status) && expiresAt>Date.now()) {
+    return json({payment_intent_id:existing.data.id,checkout_url:existing.data.checkout_url,status:existing.data.status,reused:true});
+  }
 
   const payload: Record<string, unknown> = {
     amount: Math.round(amount * 100),
@@ -109,7 +122,7 @@ Deno.serve(async (req) => {
   const intentionId = String(result.id || '');
   const clientSecret = String(result.client_secret || '');
   const providerOrderId = String(result.intention_order_id || '');
-  if (!intentionId || !clientSecret) return json({ error: 'paymob_invalid_response' }, 502);
+  if (!intentionId || !clientSecret || !providerOrderId) return json({ error: 'paymob_invalid_response' }, 502);
 
   const checkoutUrl = `${PAYMOB_BASE}/unifiedcheckout/?publicKey=${encodeURIComponent(Deno.env.get('PAYMOB_PUBLIC_KEY') || '')}&clientSecret=${encodeURIComponent(clientSecret)}`;
 
@@ -123,7 +136,7 @@ Deno.serve(async (req) => {
     status: 'requires_action',
     checkout_url: checkoutUrl,
     client_secret: clientSecret,
-    metadata: { order_number: orderNumber },
+    metadata: { order_number: orderNumber, expires_at: new Date(Date.now()+45*60*1000).toISOString() },
     updated_at: new Date().toISOString(),
   };
   const { data: saved, error: saveError } = await admin.from('payment_intents').upsert(row, { onConflict: 'order_id' }).select('*').single();
