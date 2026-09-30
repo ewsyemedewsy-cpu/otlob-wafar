@@ -14,6 +14,20 @@ const ship={FAYOUM:35,CAIRO:50,GIZA:50,ALEXANDRIA:60,DELTA_CANAL:65,UPPER_EGYPT:
 import {calculatePrice} from './pricing.js';
 import {quoteSources,searchSourceFeeds} from './sourcing.js';
 import {supplierRecord} from './suppliers.js';
+import {operationalAlerts} from './alerts.js';
+app.get('/admin/alerts',requireAdmin,async(req,res)=>{
+ res.set('Cache-Control','no-store');
+ try{
+  const results=await Promise.all([
+   supabase.from('orders').select('id,order_number,status,payment_status,created_at').order('created_at',{ascending:false}).limit(100),
+   supabase.from('payment_intents').select('id,order_id,status,metadata,checkout_url,updated_at').in('status',['pending','requires_action']).order('updated_at',{ascending:false}).limit(100),
+   supabase.from('notification_outbox').select('id,order_id,event_type,updated_at').eq('status','failed').order('updated_at',{ascending:false}).limit(100),
+   supabase.from('fulfillment_jobs').select('id,order_id,updated_at').eq('status','failed').order('updated_at',{ascending:false}).limit(100)
+  ]);
+  if(results.some(r=>r.error))throw Error();
+  res.json({alerts:operationalAlerts({orders:results[0].data,payments:results[1].data,notifications:results[2].data,fulfillments:results[3].data}),latestRecordsLimit:100});
+ }catch{res.status(503).json({error:'alerts_unavailable'});}
+});
 app.get('/admin/suppliers',requireAdmin,async(req,res)=>{res.set('Cache-Control','no-store');const {data,error}=await supabase.from('suppliers').select('*').order('name');if(error)return res.status(503).json({error:'supplier_directory_unavailable'});res.json(data||[])});
 app.post('/admin/suppliers',requireAdmin,async(req,res)=>{try{const row=supplierRecord(req.body||{});const {data,error}=await supabase.from('suppliers').insert(row).select('*').single();if(error)return res.status(503).json({error:'supplier_save_failed'});res.status(201).json(data)}catch{res.status(400).json({error:'invalid_supplier_record'})}});
 app.patch('/admin/suppliers/:id',requireAdmin,async(req,res)=>{try{const row=supplierRecord(req.body||{});const {data,error}=await supabase.from('suppliers').update(row).eq('id',req.params.id).select('*').single();if(error)return res.status(503).json({error:'supplier_save_failed'});res.json(data)}catch{res.status(400).json({error:'invalid_supplier_record'})}});

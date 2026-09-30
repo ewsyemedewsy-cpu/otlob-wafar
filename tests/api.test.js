@@ -7,6 +7,7 @@ test('HTTP guards prevent unauthorized admin/payment/invoice access and invalid 
  const capabilities=await(await fetch(base+'/capabilities')).json();assert.equal(capabilities.onlinePayment,false);
  assert.equal((await fetch(base+'/admin/products')).status,401);
  assert.equal((await fetch(base+'/admin/suppliers')).status,401);
+ assert.equal((await fetch(base+'/admin/alerts')).status,401);
  assert.equal((await fetch(base+'/admin/suppliers',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status,401);
  assert.equal((await fetch(base+'/catalog/search?q=phone')).status,503);
  assert.equal((await fetch(base+'/admin/pricing/preview',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status,401);
