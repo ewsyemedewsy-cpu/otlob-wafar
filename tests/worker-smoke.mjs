@@ -45,6 +45,20 @@ try {
   });
   assert.equal(quote.status, 200);
   assert.ok((await quote.json()).profitRate >= .05);
+  // The simulated ingress address is constant while the caller tries to
+  // rotate an untrusted forwarding chain. Request 13 must still be limited.
+  for (let attempt = 1; attempt <= 13; attempt++) {
+    const response = await request('/orders', { method: 'POST',
+      headers: { 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.10',
+        'x-forwarded-for': '198.51.100.' + attempt, 'x-real-ip': '198.51.100.' + attempt },
+      body: '{}',
+    });
+    assert.equal(response.status, attempt <= 12 ? 400 : 429);
+  }
+  const otherVisitor = await request('/orders', { method: 'POST',
+    headers: { 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.11' }, body: '{}',
+  });
+  assert.equal(otherVisitor.status, 400);
   console.log('Workers runtime: health, CORS, administration guards, invalid checkout, payment signature and pricing passed.');
 } finally {
   if (runtime) await runtime.dispose();
