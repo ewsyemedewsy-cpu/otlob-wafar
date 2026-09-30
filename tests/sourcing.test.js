@@ -21,3 +21,9 @@ test('source outages do not invent results and configured identity wins',async()
  assert.equal(result.sourcesChecked,1);assert.equal(result.sourcesUnavailable,1);assert.equal(result.offers[0].supplierId,'approved');assert.equal(result.offers[0].directFulfillmentAgreed,false);
  await assert.rejects(searchSourceFeeds('x'));
 });
+test('customer reference links never become fetch targets or carry URL credentials',async()=>{
+ const targets=[];const fetchImpl=async url=>{targets.push(new URL(url));return new Response(JSON.stringify({offers:[]}));};
+ await searchSourceFeeds('هاتف',{feeds:[{endpoint:'https://approved.invalid/feed'}],referenceUrl:'https://shop.invalid/product#section',fetchImpl});
+ assert.equal(targets[0].host,'approved.invalid');assert.equal(targets[0].searchParams.get('reference_url'),'https://shop.invalid/product');
+ for(const referenceUrl of ['http://shop.invalid/item','https://user:password@shop.invalid/item','not-a-url',123])await assert.rejects(searchSourceFeeds('هاتف',{feeds:[],referenceUrl,fetchImpl}));
+});

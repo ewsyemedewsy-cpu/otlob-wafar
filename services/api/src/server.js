@@ -31,17 +31,19 @@ app.get('/admin/alerts',requireAdmin,async(req,res)=>{
 app.get('/admin/suppliers',requireAdmin,async(req,res)=>{res.set('Cache-Control','no-store');const {data,error}=await supabase.from('suppliers').select('*').order('name');if(error)return res.status(503).json({error:'supplier_directory_unavailable'});res.json(data||[])});
 app.post('/admin/suppliers',requireAdmin,async(req,res)=>{try{const row=supplierRecord(req.body||{});const {data,error}=await supabase.from('suppliers').insert(row).select('*').single();if(error)return res.status(503).json({error:'supplier_save_failed'});res.status(201).json(data)}catch{res.status(400).json({error:'invalid_supplier_record'})}});
 app.patch('/admin/suppliers/:id',requireAdmin,async(req,res)=>{try{const row=supplierRecord(req.body||{});const {data,error}=await supabase.from('suppliers').update(row).eq('id',req.params.id).select('*').single();if(error)return res.status(503).json({error:'supplier_save_failed'});res.json(data)}catch{res.status(400).json({error:'invalid_supplier_record'})}});
-app.get('/catalog/search',rateLimit(10,60_000),async(req,res)=>{
+const catalogSearch=async(req,res)=>{
  res.set('Cache-Control','no-store');
  try{
   const config=JSON.parse(process.env.APPROVED_SOURCE_FEEDS||'[]');
   if(!config.length)return res.status(503).json({error:'external_search_not_configured'});
   const feeds=config.map(f=>({...f,token:f.tokenEnv?process.env[f.tokenEnv]:undefined}));
-  const results=await searchSourceFeeds(req.query.q,{feeds});
+  const results=await searchSourceFeeds(req.method==='POST'?req.body.q:req.query.q,{feeds,referenceUrl:req.method==='POST'?req.body.referenceUrl:undefined});
   const quotes=quoteSources(results.offers).map(({supplierId,pricing,...q})=>({...q,price:pricing?.finalPrice??null}));
   res.json({quotes,sourcesChecked:results.sourcesChecked,sourcesUnavailable:results.sourcesUnavailable,preview:true});
  }catch{res.status(400).json({error:'external_search_unavailable'});}
-});
+};
+app.get('/catalog/search',rateLimit(10,60_000),catalogSearch);
+app.post('/catalog/search',rateLimit(10,60_000),catalogSearch);
 // A read-only order quote. It does not change catalog prices or activate payment fees.
 app.post('/admin/pricing/preview',requireAdmin,(req,res)=>{
  try{res.json({preview:true,...calculatePrice({...req.body,emergencyApproved:false})});}

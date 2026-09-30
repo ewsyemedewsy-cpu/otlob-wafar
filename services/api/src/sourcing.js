@@ -15,12 +15,15 @@ export function quoteSources(offers,{now=Date.now(),paymentFees=PAYMOB_CARD_PREV
 }
 
 // Server-owned endpoints only: clients cannot submit a URL or credentials.
-export async function searchSourceFeeds(query,{feeds=[],fetchImpl=fetch}={}) {
+export async function searchSourceFeeds(query,{feeds=[],fetchImpl=fetch,referenceUrl}={}) {
  const q=String(query||'').trim();if(q.length<2||q.length>120)throw Error('invalid_search_query');
  if(feeds.length>10)throw Error('too_many_source_feeds');
+ let reference;
+ if(referenceUrl!==undefined){if(typeof referenceUrl!=='string'||referenceUrl.length>2000)throw Error('invalid_reference_url');const u=new URL(referenceUrl);if(u.protocol!=='https:'||u.username||u.password)throw Error('invalid_reference_url');u.hash='';reference=u.href;}
  const responses=await Promise.allSettled(feeds.map(async f=>{
   const url=new URL(f.endpoint);if(url.protocol!=='https:')throw Error('https_feed_required');
   url.searchParams.set('q',q);
+  if(reference)url.searchParams.set('reference_url',reference);
   const r=await fetchImpl(url,{redirect:'error',signal:AbortSignal.timeout(8000),headers:{Accept:'application/json',...(f.token?{Authorization:'Bearer '+f.token}:{})}});
   if(!r.ok)throw Error('source_unavailable');
   const size=Number(r.headers.get('content-length'));if(size>1024*1024)throw Error('feed_too_large');

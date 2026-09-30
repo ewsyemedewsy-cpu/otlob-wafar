@@ -1,0 +1,9 @@
+import React,{useState} from 'react';
+export function LinkSearch({api}) {
+ const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[result,setResult]=useState(null);
+ const submit=async e=>{e.preventDefault();setBusy(true);setMessage('');setResult(null);const f=new FormData(e.currentTarget);
+  try{if(!api)throw Error();const r=await fetch(api+'/catalog/search',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({q:f.get('query'),referenceUrl:f.get('reference')})});if(!r.ok)throw Error();const data=await r.json();setResult(data);if(!data.quotes.length)setMessage('لم نجد عرضًا حديثًا مطابقًا. جرّب رقم الموديل أو مواصفات أدق.');}
+  catch{setMessage('تعذر البحث الآن. لم يُرسل طلب شراء أو يُحفظ طلب متابعة؛ حاول بعد اتصال المصادر.');}finally{setBusy(false);}
+ };
+ return <section className="external-search"><h3>ابعت الرابط… وإحنا ندوّر لك</h3><p>أدخل رابط المنتج واسمه ورقم الموديل. الرابط مرجع للمطابقة؛ البحث يتم داخل المصادر المتصلة فقط.</p><form onSubmit={submit}><label>رابط المنتج<input name="reference" type="url" pattern="https://.*" maxLength={2000} required placeholder="https://…"/></label><label>اسم المنتج والموديل<input name="query" minLength={2} maxLength={120} required/></label><button className="checkout" disabled={busy}>{busy?'جاري البحث عن عرض مطابق…':'ابحث عن هذا المنتج'}</button></form>{message&&<p role="status">{message}</p>}{result&&<><p>مصادر فُحصت: {result.sourcesChecked} — تعذر الاتصال بـ: {result.sourcesUnavailable}</p>{result.quotes.map(q=><div className="line" key={q.productKey}><span>{q.title||q.productKey}</span><b>{q.status==='preview'?Number(q.price).toLocaleString('ar-EG')+' ج.م — عرض تقديري يحتاج التأكيد':q.status==='margin_unavailable'?'لا يوجد عرض يحقق شروط التسعير':'يحتاج موردًا معتمدًا'}</b></div>)}</>}</section>;
+}
