@@ -1,10 +1,14 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 process.env.NODE_ENV='test';process.env.SUPABASE_URL='https://local-test.invalid';process.env.SUPABASE_SERVICE_ROLE_KEY='local-test-not-a-real-key';process.env.ADMIN_API_KEY='test-admin-key';
+process.env.ORDER_GOVERNORATES='FAYOUM';
 test('HTTP guards prevent unauthorized admin/payment/invoice access and invalid orders',async()=>{
  const {app}=await import('../services/api/src/server.js');const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const base='http://127.0.0.1:'+server.address().port;
  try{
  assert.equal((await fetch(base+'/health')).status,200);
  const capabilities=await(await fetch(base+'/capabilities')).json();assert.equal(capabilities.onlinePayment,false);
+ assert.deepEqual(capabilities.deliveryGovernorates,['FAYOUM']);
+ const outsideRegion=await fetch(base+'/orders',{method:'POST',headers:{'content-type':'application/json','Idempotency-Key':'test-outside-region-key'},body:JSON.stringify({customer_name:'عميل اختبار',address:'عنوان اختبار',governorate:'CAIRO',payment_method:'cod',items:[{product_id:'00000000-0000-0000-0000-000000000001',quantity:1}]})});
+ assert.equal(outsideRegion.status,400);assert.equal((await outsideRegion.json()).error,'delivery_region_unavailable');
  assert.equal((await fetch(base+'/admin/products')).status,401);
  assert.equal((await fetch(base+'/admin/suppliers')).status,401);
  assert.equal((await fetch(base+'/admin/alerts')).status,401);

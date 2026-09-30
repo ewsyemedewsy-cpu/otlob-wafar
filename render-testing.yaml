@@ -14,6 +14,8 @@ services:
         value: "24"
       - key: NODE_ENV
         value: production
+      - key: ORDER_GOVERNORATES
+        value: FAYOUM
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SECRET_KEY

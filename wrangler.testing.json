@@ -6,6 +6,7 @@
   "workers_dev": true,
   "vars": {
     "API_RUNTIME": "worker",
+    "ORDER_GOVERNORATES": "FAYOUM",
     "NODE_ENV": "production",
     "PAYMOB_ONLINE_ENABLED": "false",
     "APPROVED_SOURCE_FEEDS": "[]"

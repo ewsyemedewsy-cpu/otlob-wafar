@@ -18,7 +18,7 @@ try {
     compatibilityDate: '2026-09-30', compatibilityFlags: ['nodejs_compat'],
     bindings: { API_RUNTIME: 'worker', SUPABASE_URL: 'https://local-test.invalid',
       SUPABASE_SECRET_KEY: 'local-test-not-a-real-key', ADMIN_API_KEY: 'local-test-admin',
-      PUBLIC_ORIGIN: 'https://store-test.invalid', PAYMOB_ONLINE_ENABLED: 'false',
+      PUBLIC_ORIGIN: 'https://store-test.invalid', PAYMOB_ONLINE_ENABLED: 'false', ORDER_GOVERNORATES: 'FAYOUM',
       APPROVED_SOURCE_FEEDS: '[]' },
   }));
   const request = (path, options) => runtime.dispatchFetch('https://worker-test.invalid' + path, options);
@@ -29,6 +29,10 @@ try {
   const foreign = await request('/health', { headers: { Origin: 'https://foreign.invalid' } });
   assert.notEqual(foreign.headers.get('access-control-allow-origin'), 'https://foreign.invalid');
   assert.equal((await (await request('/capabilities')).json()).onlinePayment, false);
+  assert.deepEqual((await (await request('/capabilities')).json()).deliveryGovernorates, ['FAYOUM']);
+  const outsideRegion=await request('/orders',{method:'POST',headers:{'content-type':'application/json','Idempotency-Key':'test-outside-region-key'},body:JSON.stringify({customer_name:'عميل اختبار',address:'عنوان اختبار',governorate:'CAIRO',payment_method:'cod',items:[{product_id:'00000000-0000-0000-0000-000000000001',quantity:1}]})});
+  assert.equal(outsideRegion.status,400);
+  assert.equal((await outsideRegion.json()).error,'delivery_region_unavailable');
   assert.equal((await request('/admin/orders')).status, 401);
   assert.equal((await request('/admin/orders/not-an-id/details', {
     headers: { 'x-admin-key': 'local-test-admin' },
