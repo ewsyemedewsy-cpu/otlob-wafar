@@ -1,0 +1,57 @@
+import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
+
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const TOKEN = Deno.env.get('WHATSAPP_ACCESS_TOKEN')!;
+const PHONE_ID = Deno.env.get('WHATSAPP_PHONE_NUMBER_ID')!;
+const GRAPH = Deno.env.get('WHATSAPP_GRAPH_VERSION') || 'v23.0';
+const TEMPLATE = Deno.env.get('WHATSAPP_TEMPLATE_NAME') || '';
+const TEMPLATE_LANG = Deno.env.get('WHATSAPP_TEMPLATE_LANGUAGE') || 'en_US';
+const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+
+function messageFor(row:any) {
+  const n = row.payload?.order_number || row.order_id;
+  if(String(row.event_type).startsWith('supplier_order:'))return `طلب ${n}\nالمحتويات: ${row.payload?.manifest||''}\nالعميل: ${row.payload?.customer_name||''}\nالهاتف: ${row.payload?.phone||''}\nالعنوان: ${row.payload?.address||''}`;
+  switch (row.event_type) {
+    case 'order_created': return `Emad Store: تم تأكيد طلبك رقم ${n} بنجاح. شكراً لثقتك بنا.`;
+    case 'shipped': return `Emad Store: طلبك رقم ${n} تم شحنه وأصبح في الطريق إليك.`;
+    case 'delivered': return `Emad Store: تم تسجيل تسليم طلبك رقم ${n}. شكراً لك.`;
+    case 'returned': return `Emad Store: تم تسجيل إرجاع طلبك رقم ${n}. سنتابع معك الإجراءات المطلوبة.`;
+    default: return `Emad Store: تحديث على طلبك رقم ${n}.`;
+  }
+}
+
+Deno.serve(async (req) => {
+  if (req.method !== 'POST') return new Response('Method Not Allowed', {status:405});
+  const secret=Deno.env.get('WHATSAPP_DISPATCH_SECRET');
+  if(!secret || req.headers.get('x-whatsapp-secret')!==secret) return new Response('Unauthorized',{status:401});
+  if (!TOKEN || !PHONE_ID) return new Response('WhatsApp not configured', {status:500});
+  await admin.from('notification_outbox').update({status:'failed',last_error:'manual_review_required_after_worker_interruption',updated_at:new Date().toISOString()}).eq('status','processing').lt('updated_at',new Date(Date.now()-15*60*1000).toISOString());
+  const { data: rows, error } = await admin.from('notification_outbox').select('*').eq('channel','whatsapp').eq('status','pending').lte('next_attempt_at',new Date().toISOString()).order('created_at').limit(20);
+  if (error) return new Response(error.message,{status:500});
+  let sent=0, failed=0;
+  for (const row of rows || []) {
+    const claim=await admin.from('notification_outbox').update({status:'processing',attempts:row.attempts+1,updated_at:new Date().toISOString()}).eq('id',row.id).eq('status','pending').select('id');
+    if(claim.error || !claim.data?.length) continue;
+    const isSupplier=String(row.event_type).startsWith('supplier_order:');
+    const supplierTemplate=Deno.env.get('WHATSAPP_SUPPLIER_TEMPLATE_NAME')||'';
+    if(isSupplier && TEMPLATE && !supplierTemplate){await admin.from('notification_outbox').update({status:'failed',last_error:'supplier_template_configuration_required'}).eq('id',row.id);failed++;continue;}
+    let message:any = TEMPLATE ? {messaging_product:'whatsapp',to:row.recipient,type:'template',template:{name:TEMPLATE,language:{code:TEMPLATE_LANG},components:[{type:'body',parameters:[{type:'text',text:String(row.payload?.order_number||row.order_id)},{type:'text',text:String(row.payload?.awb||'')}]}]}} : {messaging_product:'whatsapp',to:row.recipient,type:'text',text:{preview_url:false,body:messageFor(row)}};
+    if(isSupplier&&supplierTemplate)message={messaging_product:'whatsapp',to:row.recipient,type:'template',template:{name:supplierTemplate,language:{code:Deno.env.get('WHATSAPP_SUPPLIER_TEMPLATE_LANGUAGE')||'ar'},components:[{type:'body',parameters:['order_number','manifest','customer_name','phone','address'].map(k=>({type:'text',text:String(row.payload?.[k]||'')}))}]}};
+    let resp:Response;try{resp = await fetch(`https://graph.facebook.com/${GRAPH}/${PHONE_ID}/messages`, { method:'POST', headers:{Authorization:`Bearer ${TOKEN}`,'Content-Type':'application/json'}, body:JSON.stringify(message),signal:AbortSignal.timeout(30000) });}catch{await admin.from('notification_outbox').update({status:'failed',last_error:'manual_review_required_provider_result_unknown',updated_at:new Date().toISOString()}).eq('id',row.id);failed++;continue;}
+    const result = await resp.json().catch(()=>({}));
+    if (resp.ok) {
+      const mid = result?.messages?.[0]?.id || null;
+      const saved=await admin.from('notification_outbox').update({status:'sent',provider_message_id:mid,last_error:null,updated_at:new Date().toISOString()}).eq('id',row.id);
+      if(saved.error)return new Response('Notification persistence failed',{status:500});
+      sent++;
+    } else {
+      const attempts = row.attempts + 1;
+      const terminal = attempts >= 5;
+      const delay = Math.min(3600, 30 * 2 ** Math.min(attempts,6));
+      await admin.from('notification_outbox').update({status:terminal?'failed':'pending',last_error:JSON.stringify(result).slice(0,2000),next_attempt_at:new Date(Date.now()+delay*1000).toISOString(),updated_at:new Date().toISOString()}).eq('id',row.id);
+      failed++;
+    }
+  }
+  return new Response(JSON.stringify({processed:(rows||[]).length,sent,failed}),{headers:{'Content-Type':'application/json'}});
+});

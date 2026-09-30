@@ -1,0 +1,14 @@
+[functions.payment-webhook]
+verify_jwt = false
+[functions.payment-create]
+verify_jwt = true
+[functions.whatsapp-dispatch]
+verify_jwt = false
+[functions.fulfillment-dispatch]
+verify_jwt = false
+[functions.bosta-webhook]
+verify_jwt = false
+[functions.bosta-create-shipment]
+verify_jwt = true
+[functions.admin-api]
+verify_jwt = true
