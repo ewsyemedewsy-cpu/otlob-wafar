@@ -14,3 +14,22 @@ jobs:
       - run: npm run build:web
       - run: npm run check:edge
       - run: npm audit --omit=dev
+      - name: Install browser for UI checks
+        run: npx playwright install --with-deps chromium
+      - name: Check desktop and mobile storefront
+        run: |
+          npm --prefix apps/web run preview -- --host 127.0.0.1 --port 4173 > /tmp/store-preview.log 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid"' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:4173/ > /dev/null; then break; fi
+            sleep 1
+          done
+          npm run test:browser
+      - name: Save storefront screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: storefront-ui-checks
+          path: qa/
+          if-no-files-found: ignore
