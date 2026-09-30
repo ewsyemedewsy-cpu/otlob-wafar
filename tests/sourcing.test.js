@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {quoteSources,searchSourceFeeds} from '../services/api/src/sourcing.js';
-const now=Date.now(),offer={productKey:'GTIN-EXACT-VARIANT',title:'منتج',currency:'EGP',verifiedMatch:true,inStock:true,observedAt:new Date(now).toISOString(),marketTotal:200,supplierId:'supplier-1',purchaseCost:100,supplierShipping:10,directFulfillmentAgreed:true,allowsSingleUnits:true,minQuantity:1,priceBasis:'unit'};
+const now=Date.now(),offer={productKey:'GTIN-EXACT-VARIANT',title:'منتج',currency:'EGP',verifiedMatch:true,marketMinQuantity:1,inStock:true,observedAt:new Date(now).toISOString(),marketTotal:200,supplierId:'supplier-1',purchaseCost:100,supplierShipping:10,directFulfillmentAgreed:true,allowsSingleUnits:true,minQuantity:1,priceBasis:'unit'};
 test('source selection uses delivered purchase cost and protected net margin',()=>{
  const rows=quoteSources([offer,{...offer,supplierId:'supplier-2',purchaseCost:95,supplierShipping:30}],{now});
  assert.equal(rows[0].supplierId,'supplier-1');assert.ok(rows[0].pricing.profitRate>=.05);assert.ok(rows[0].pricing.finalPrice<200);
@@ -14,7 +14,7 @@ test('wholesale and pack prices cannot masquerade as a purchasable single item',
  const result=quoteSources([{...offer,purchaseCost:1,minQuantity:100},{...offer,supplierId:'single-item-supplier'}],{now});assert.equal(result[0].supplierId,'single-item-supplier');
 });
 test('unverified, stale, future, unavailable or wrong-currency offers are excluded',()=>{
- for(const changes of [{verifiedMatch:false},{inStock:false},{currency:'USD'},{observedAt:new Date(now-3600001).toISOString()},{observedAt:new Date(now+1).toISOString()},{productKey:''}])assert.deepEqual(quoteSources([{...offer,...changes}],{now}),[]);
+ for(const changes of [{verifiedMatch:false},{marketMinQuantity:10},{marketMinQuantity:undefined},{inStock:false},{currency:'USD'},{observedAt:new Date(now-3600001).toISOString()},{observedAt:new Date(now+1).toISOString()},{productKey:''}])assert.deepEqual(quoteSources([{...offer,...changes}],{now}),[]);
 });
 test('source outages do not invent results and configured identity wins',async()=>{
  const result=await searchSourceFeeds('هاتف',{feeds:[{endpoint:'https://example.invalid/feed',name:'مورد',supplierId:'approved',directFulfillmentAgreed:false},{endpoint:'https://down.invalid/feed'}],fetchImpl:async url=>{if(url.host==='down.invalid')throw Error('down');return new Response(JSON.stringify({offers:[offer]}),{headers:{'content-type':'application/json'}});}});

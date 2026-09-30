@@ -2,7 +2,7 @@ import {calculatePrice,PAYMOB_CARD_PREVIEW} from './pricing.js';
 
 // Offers are normalized by an approved feed adapter. Never match by title alone.
 export function quoteSources(offers,{now=Date.now(),paymentFees=PAYMOB_CARD_PREVIEW}={}) {
- const fresh=offers.filter(o=>o.currency==='EGP'&&typeof o.productKey==='string'&&o.productKey.length>0&&o.verifiedMatch===true&&o.inStock===true&&Number.isFinite(Date.parse(o.observedAt))&&now-Date.parse(o.observedAt)>=0&&now-Date.parse(o.observedAt)<=3600000&&Number.isFinite(o.marketTotal)&&o.marketTotal>0);
+ const fresh=offers.filter(o=>o.currency==='EGP'&&typeof o.productKey==='string'&&o.productKey.length>0&&o.verifiedMatch===true&&o.marketMinQuantity===1&&o.inStock===true&&Number.isFinite(Date.parse(o.observedAt))&&now-Date.parse(o.observedAt)>=0&&now-Date.parse(o.observedAt)<=3600000&&Number.isFinite(o.marketTotal)&&o.marketTotal>0);
  const groups=new Map();for(const o of fresh){if(!groups.has(o.productKey))groups.set(o.productKey,[]);groups.get(o.productKey).push(o);}
  return [...groups].map(([productKey,rows])=>{
   const marketMin=Math.min(...rows.map(o=>o.marketTotal));
