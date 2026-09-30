@@ -3,8 +3,8 @@ import {PGlite} from '@electric-sql/pglite';import {pgcrypto} from '@electric-sq
 test('upgrade, orders, stock, payment atomicity, and role permissions',async()=>{
  const db=new PGlite({extensions:{pgcrypto}});
  try{
- await db.exec('create role anon;create role authenticated;create role service_role;');
- for(const file of ['db/schema.sql','db/V12_compatible_upgrade.sql','db/V17_production_upgrade.sql','legacy-v17/V15_paymob_migration.sql','legacy-v17/V16_fulfillment_migration.sql','legacy-v17/V17_hardening_migration.sql','db/V14_admin_security_migration.sql','db/V18_compatibility_and_transactions.sql','db/V18_pricing_and_catalog.sql','db/V18_shipping_events.sql'])await db.exec(fs.readFileSync(file,'utf8'));
+ await db.exec('create role anon;create role authenticated;create role service_role;create schema extensions;create extension pgcrypto with schema extensions;');
+ for(const file of ['db/schema.sql','db/V12_compatible_upgrade.sql','db/V17_production_upgrade.sql','legacy-v17/V15_paymob_migration.sql','legacy-v17/V16_fulfillment_migration.sql','legacy-v17/V17_hardening_migration.sql','db/V14_admin_security_migration.sql','db/V18_compatibility_and_transactions.sql','db/V18_pricing_and_catalog.sql','db/V18_shipping_events.sql','db/V21_supabase_runtime_compatibility.sql']){if(file==='db/V21_supabase_runtime_compatibility.sql')await db.exec('grant execute on function public.claim_fulfillment_jobs(integer) to anon,authenticated;grant execute on function public.release_cancelled_stock_v18() to anon,authenticated;');await db.exec(fs.readFileSync(file,'utf8'));}
  await db.exec(fs.readFileSync('db/V18_compatibility_and_transactions.sql','utf8'));
  const product=(await db.query("insert into products(sku,title_ar,supplier_cost,retail_price,stock_quantity)values('T1','اختبار',100,110,3)returning id")).rows[0];
  const args=['order-test-key-0001','عماد','01012345678','CAIRO','عنوان اختبار كامل','cod',JSON.stringify([{product_id:product.id,quantity:2}])];
@@ -30,6 +30,7 @@ test('upgrade, orders, stock, payment atomicity, and role permissions',async()=>
  await db.query("update orders set status='pending',bosta_awb=null where id=$1",[order.id]);await db.query("update orders set status='cancelled' where id=$1",[order.id]);assert.equal((await db.query('select stock_quantity from products')).rows[0].stock_quantity,3);
  await db.query("update orders set status='processing' where id=$1",[order.id]);await db.query("update orders set status='cancelled' where id=$1",[order.id]);assert.equal((await db.query('select stock_quantity from products')).rows[0].stock_quantity,3);
  const privileges=(await db.query("select has_table_privilege('anon','products','SELECT') as cost_access,has_function_privilege('anon','create_order_v18(text,text,text,text,text,text,jsonb,uuid,text,boolean)','EXECUTE') as order_access")).rows[0];assert.equal(privileges.cost_access,false);assert.equal(privileges.order_access,false);
+ const locked=(await db.query("select has_function_privilege('anon','claim_fulfillment_jobs(integer)','EXECUTE') as queue,has_function_privilege('authenticated','release_cancelled_stock_v18()','EXECUTE') as stock")).rows[0];assert.deepEqual(locked,{queue:false,stock:false});
  const boundary=(await db.query("insert into products(sku,title_ar,supplier_cost,retail_price)values('BOUNDARY','حد الربح',100,105.50)returning id")).rows[0].id;
  const floorOrder=await call(['boundary-order-key1',...args.slice(1,6),JSON.stringify([{product_id:boundary,quantity:1}])]);assert.equal(Number(floorOrder.total),155.5);
  }finally{await db.close()}

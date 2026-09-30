@@ -50,7 +50,7 @@ declare fingerprint text; prior public.order_idempotency; result jsonb; x jsonb;
  if p_governorate not in ('FAYOUM','CAIRO','GIZA','ALEXANDRIA','DELTA_CANAL','UPPER_EGYPT') then raise exception 'invalid_governorate';end if;
  if p_payment_method not in ('cod','wallet') or (p_payment_method='wallet' and p_user_id is null) then raise exception 'invalid_payment_method';end if;
  if jsonb_typeof(p_items)<>'array' or jsonb_array_length(p_items) not between 1 and 30 then raise exception 'invalid_items';end if;
- fingerprint:=encode(digest(jsonb_build_object('name',p_customer_name,'phone',p_whatsapp_phone,'gov',p_governorate,'address',p_address,'payment',p_payment_method,'items',p_items,'user',p_user_id,'policy',p_policy_version,'accepted',p_policy_accepted)::text,'sha256'),'hex');
+ fingerprint:=encode(pg_catalog.sha256(pg_catalog.convert_to(jsonb_build_object('name',p_customer_name,'phone',p_whatsapp_phone,'gov',p_governorate,'address',p_address,'payment',p_payment_method,'items',p_items,'user',p_user_id,'policy',p_policy_version,'accepted',p_policy_accepted)::text,'UTF8')),'hex');
  perform pg_advisory_xact_lock(hashtextextended(p_key,0));
  select * into prior from public.order_idempotency where idempotency_key=p_key;
  if found then
