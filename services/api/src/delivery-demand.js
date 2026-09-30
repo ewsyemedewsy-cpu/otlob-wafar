@@ -1,0 +1,2 @@
+export const demandRegionLabels={FAYOUM:'الفيوم',CAIRO:'القاهرة',GIZA:'الجيزة',ALEXANDRIA:'الإسكندرية',DELTA_CANAL:'الدلتا والقناة',UPPER_EGYPT:'الصعيد'};
+export function demandAlerts(rows=[]){return rows.map(r=>({id:`delivery-demand:${r.region}:${r.last_signal}`,title:`اهتمام بالتوصيل إلى ${demandRegionLabels[r.region]||r.region}`,detail:`آخر 30 يومًا: ${r.interest_count} إشارات اهتمام، و${r.blocked_count} محاولات شراء خارج النطاق. ليست طلبات مؤكدة ولا عدد عملاء فريدين.`,at:r.last_signal}));}

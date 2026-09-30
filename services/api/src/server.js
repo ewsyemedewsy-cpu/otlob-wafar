@@ -1,4 +1,5 @@
 import {paymobStatus} from '../../../shared/paymob-status.js';
+import {demandAlerts} from './delivery-demand.js';
 import {deliveryRegions} from './delivery-regions.js';
 import express from 'express';import helmet from 'helmet';import cors from 'cors';import crypto from 'crypto';
 import {requireAdmin} from './admin.js';import {createClient} from '@supabase/supabase-js';import {createPaymobIntention,createBostaDelivery,sendSupplierWhatsApp,verifyPaymobTransactionHmac} from './integrations.js';
@@ -10,6 +11,7 @@ else setInterval(pruneBuckets,60_000).unref();
 const rateLimit=(limit,windowMs)=> (req,res,next)=>{const k=req.baseUrl+':'+req.ip;const now=Date.now();const b=buckets.get(k)||{n:0,t:now};if(now-b.t>windowMs){b.n=0;b.t=now;}b.n++;buckets.set(k,b);if(b.n>limit)return res.status(429).json({error:'rate_limited'});next();};
 app.use(express.json({limit:'1mb'}));
 app.use('/orders',rateLimit(12,60_000));
+app.use('/delivery-interest',rateLimit(5,60_000));
 app.use('/payments',rateLimit(20,60_000));const SUPABASE_SERVER_KEY=process.env.SUPABASE_SECRET_KEY||process.env.SUPABASE_SERVICE_ROLE_KEY;
 if(!process.env.SUPABASE_URL||!SUPABASE_SERVER_KEY) throw new Error('Missing Supabase server configuration');
 const supabase=createClient(process.env.SUPABASE_URL,SUPABASE_SERVER_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
@@ -29,7 +31,8 @@ app.get('/admin/alerts',requireAdmin,async(req,res)=>{
    supabase.from('fulfillment_jobs').select('id,order_id,updated_at').eq('status','failed').order('updated_at',{ascending:false}).limit(100)
   ]);
   if(results.some(r=>r.error))throw Error();
-  res.json({alerts:operationalAlerts({orders:results[0].data,payments:results[1].data,notifications:results[2].data,fulfillments:results[3].data}),latestRecordsLimit:100});
+  const demand=await supabase.rpc('delivery_demand_summary',{p_days:30});
+  res.json({deliveryDemand:demand.error?[]:demand.data||[],deliveryDemandUnavailable:!!demand.error,alerts:[...demandAlerts(demand.error?[]:demand.data||[]),...operationalAlerts({orders:results[0].data,payments:results[1].data,notifications:results[2].data,fulfillments:results[3].data})],latestRecordsLimit:100});
  }catch{res.status(503).json({error:'alerts_unavailable'});}
 });
 app.get('/admin/suppliers',requireAdmin,async(req,res)=>{res.set('Cache-Control','no-store');const {data,error}=await supabase.from('suppliers').select('*').order('name');if(error)return res.status(503).json({error:'supplier_directory_unavailable'});res.json(data||[])});
@@ -102,11 +105,21 @@ app.patch('/admin/support/:id',requireAdmin,async(req,res)=>{res.set('Cache-Cont
 app.get('/orders/:id/status',async(req,res)=>{try{res.set('Cache-Control','no-store');if(!await canReadOrder(req))return res.status(403).json({error:'forbidden'});const {data,error}=await supabase.from('orders').select('id,order_number,status,payment_status,payment_method,total').eq('id',req.params.id).maybeSingle();if(error||!data)return res.status(404).json({error:'order_not_found'});const shipment=await supabase.from('shipments').select('status,provider_awb').eq('order_id',req.params.id).maybeSingle();if(shipment.error)return res.status(503).json({error:'shipment_status_unavailable'});res.json({...data,shipment:shipment.data});}catch{res.status(503).json({error:'status_unavailable'})}});
 app.get('/orders/:id/invoice',async(req,res)=>{try{res.set('Cache-Control','no-store');if(!await canReadOrder(req))return res.status(403).json({error:'forbidden'});const {data,error}=await supabase.rpc('get_order_invoice',{p_order_id:req.params.id});if(error||!data)return res.status(404).json({error:'invoice_not_found'});res.json(data)}catch{res.status(503).json({error:'invoice_unavailable'})}});
 app.get('/categories',async(req,res)=>{const {data,error}=await supabase.from('categories').select('id,slug,name_ar').order('name_ar');if(error)return res.status(500).json({error:'categories_failed'});res.json(data||[])});
+app.post('/delivery-interest',async(req,res)=>{
+ res.set('Cache-Control','no-store');
+ const region=req.body?.governorate,key=req.get('Idempotency-Key');
+ if(!Object.hasOwn(ship,region)||allowedGovernorates.includes(region)||!key||key.length<16||key.length>200)return res.status(400).json({error:'invalid_delivery_interest'});
+ try{const {error}=await supabase.rpc('record_delivery_demand',{p_region:region,p_source:'customer_interest',p_request_key:key});if(error)throw error;res.status(202).json({recorded:true,orderCreated:false})}catch{res.status(503).json({error:'delivery_interest_unavailable'})}
+});
 app.post('/orders',async(req,res)=>{try{
  const {customer_name,whatsapp_phone,governorate,address,payment_method,items}=req.body;
  if(payment_method==='wallet'&&process.env.PAYMOB_ONLINE_ENABLED!=='true')return res.status(503).json({error:'online_payment_not_enabled'});const idem=req.get('Idempotency-Key');if(!idem||idem.length<16||idem.length>200)return res.status(400).json({error:'invalid_idempotency_key'});
  if(!customer_name||!address||!Array.isArray(items)||!items.length||items.length>30||items.some(x=>!Number.isInteger(x.quantity)||x.quantity<1||x.quantity>100))return res.status(400).json({error:'invalid_order'});
- if(!allowedGovernorates.includes(governorate))return res.status(400).json({error:'delivery_region_unavailable'});
+ if(!allowedGovernorates.includes(governorate)){
+  let interestRecorded=false;
+  if(Object.hasOwn(ship,governorate)){try{const result=await supabase.rpc('record_delivery_demand',{p_region:governorate,p_source:'blocked_checkout',p_request_key:idem});interestRecorded=!result.error}catch{}}
+  return res.status(400).json({error:'delivery_region_unavailable',interestRecorded});
+ }
  let userId=null;const token=req.get('Authorization')?.replace(/^Bearer /,'');if(token){const {data,error}=await supabase.auth.getUser(token);if(error||!data.user)return res.status(401).json({error:'unauthorized'});userId=data.user.id}
  const {data,error}=await supabase.rpc('create_order_v18',{p_key:idem,p_customer_name:customer_name,p_whatsapp_phone:whatsapp_phone,p_governorate:governorate,p_address:address,p_payment_method:payment_method||'cod',p_items:items,p_user_id:userId,p_policy_version:req.body.policy_version,p_policy_accepted:req.body.policy_accepted===true});
  if(error)return res.status(409).json({error:'order_validation_failed'});const order=Array.isArray(data)?data[0]:data;const invoice_token=crypto.createHmac('sha256',SUPABASE_SERVER_KEY).update('invoice:'+order.id).digest('hex');res.status(order.replayed?200:201).json({...order,invoice_token});

@@ -26,3 +26,6 @@
 4. إدخال منتجات مؤكدة وبيانات المتجر والتوصيل واعتماد السياسة.
 5. بدء إطلاق محدود في الفيوم بالدفع عند الاستلام بعد غلق متطلبات الطلب والتشغيل. تبقى الأقسام العامة محفوظة؛ لا تُعرض منتجات غير مؤهلة للتسعير أو غير متاحة للشراء.
 6. تفعيل Paymob والشراء الآلي والإرسال والشحن تدريجيًا بعد قبول الحسابات والاتفاقات والاختبارات، دون ربطها بوعد موعد غير متحقق.
+
+## Demand beyond the initial delivery area
+Visitors can explicitly record anonymous interest in currently unsupported delivery regions. Valid blocked checkout attempts also record a separate signal while remaining rejected. The administration alert center shows a 30-day regional breakdown; counts represent signals, not unique customers or accepted orders. No names, phones, addresses or IPs are stored in these signals. A request key is hashed and deduplicated per region/source/Cairo calendar day. Direct client access is revoked, and only the server can record or summarize signals. Recording outages show an error and never permit an unsupported order. The feature is installed in staging; public availability still requires hosting.
