@@ -8,6 +8,8 @@ test('HTTP guards prevent unauthorized admin/payment/invoice access and invalid 
  assert.equal((await fetch(base+'/admin/products')).status,401);
  assert.equal((await fetch(base+'/admin/suppliers')).status,401);
  assert.equal((await fetch(base+'/admin/alerts')).status,401);
+ assert.equal((await fetch(base+'/admin/orders/00000000-0000-0000-0000-000000000001/details')).status,401);
+ assert.equal((await fetch(base+'/admin/orders/not-an-id/details',{headers:{'x-admin-key':'test-admin-key'}})).status,400);
  assert.equal((await fetch(base+'/admin/orders/00000000-0000-0000-0000-000000000001/status',{method:'PATCH',headers:{'content-type':'application/json'},body:'{}'})).status,401);
  assert.equal((await fetch(base+'/admin/orders/not-an-id/status',{method:'PATCH',headers:{'content-type':'application/json','x-admin-key':'test-admin-key'},body:'{}'})).status,400);
  assert.equal((await fetch(base+'/admin/support')).status,401);

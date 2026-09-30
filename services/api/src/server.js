@@ -60,6 +60,18 @@ app.patch('/admin/orders/:id/status',requireAdmin,async(req,res)=>{
  res.json(data);
  }catch{res.status(503).json({error:'order_management_unavailable'});}
 });
+app.get('/admin/orders/:id/details',requireAdmin,async(req,res)=>{
+ res.set('Cache-Control','no-store');
+ if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id))return res.status(400).json({error:'invalid_order_id'});
+ try{
+ const order=await supabase.from('orders').select('id').eq('id',req.params.id).maybeSingle();if(order.error)throw order.error;if(!order.data)return res.status(404).json({error:'order_not_found'});
+ const [items,history]=await Promise.all([
+ supabase.from('order_items').select('id,product_id,quantity,unit_price,product:products(sku,title_ar,specifications)').eq('order_id',req.params.id).order('id'),
+ supabase.from('admin_audit_log').select('id,action,details,created_at').eq('order_id',req.params.id).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(50)
+ ]);if(items.error||history.error)throw Error();
+ res.json({items:(items.data||[]).map(item=>({id:item.id,product_id:item.product_id,quantity:item.quantity,unit_price:item.unit_price,sku:item.product?.sku||null,title:item.product?.title_ar||null,size:item.product?.specifications?.size||null,color:item.product?.specifications?.color||null})),history:history.data||[],catalogDetailsAreCurrent:true});
+ }catch{res.status(503).json({error:'order_details_unavailable'});}
+});
 app.get('/capabilities',(req,res)=>res.json({onlinePayment:process.env.PAYMOB_ONLINE_ENABLED==='true'&&!!process.env.PAYMOB_SECRET_KEY&&!!process.env.PAYMOB_PUBLIC_KEY&&!!process.env.PAYMOB_INTEGRATION_IDS&&!!process.env.PAYMOB_NOTIFICATION_URL&&!!process.env.PAYMOB_REDIRECTION_URL}));
 app.get('/health',(req,res)=>res.json({ok:true,service:'emad-store-api',time:new Date().toISOString()}));
 app.get('/products',async(req,res)=>{try{const {data,error}=await supabase.from('products').select('id,sku,title_ar,category_id,image_url,retail_price,available,description_ar,stock_quantity,specifications,supplier_id,category:categories(slug)').eq('available',true).order('created_at',{ascending:false});if(error)throw error;res.json((data||[]).map(({category,supplier_id,...p})=>({...p,fulfillment_source:supplier_id?'supplier':'owned',specifications:Object.fromEntries(Object.entries(p.specifications||{}).filter(([k,v])=>['brand','model','color','size','condition','warranty','contents','model_key','gallery_urls'].includes(k)&&['string','number'].includes(typeof v))),category_slug:category?.slug})));}catch(e){res.status(500).json({error:'products_failed'});}});
