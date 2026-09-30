@@ -11,6 +11,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - name: Check Cloudflare Workers runtime without deployment
+        run: npm run test:worker
+        env:
+          WRANGLER_SEND_METRICS: 'false'
       - run: npm run build:web
       - run: npm run check:edge
       - run: npm audit --omit=dev

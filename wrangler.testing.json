@@ -1,0 +1,14 @@
+{
+  "name": "otlob-wafar-testing-api",
+  "main": "services/api/src/cloudflare-worker.js",
+  "compatibility_date": "2026-09-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "vars": {
+    "API_RUNTIME": "worker",
+    "NODE_ENV": "production",
+    "PAYMOB_ONLINE_ENABLED": "false",
+    "APPROVED_SOURCE_FEEDS": "[]"
+  },
+  "observability": { "enabled": false }
+}

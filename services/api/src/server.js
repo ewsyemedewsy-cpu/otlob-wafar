@@ -3,7 +3,9 @@ import express from 'express';import helmet from 'helmet';import cors from 'cors
 import {requireAdmin} from './admin.js';import {createClient} from '@supabase/supabase-js';import {createPaymobIntention,createBostaDelivery,sendSupplierWhatsApp,verifyPaymobTransactionHmac} from './integrations.js';
 const app=express();app.set('trust proxy', 1);app.use(helmet({crossOriginResourcePolicy:{policy:'cross-origin'}}));app.use(cors({origin:process.env.PUBLIC_ORIGIN?.split(',')||false}));app.use('/webhooks/paymob', express.raw({type:'application/json', limit:'1mb'}));
 const buckets=new Map();
-setInterval(()=>{const now=Date.now();for(const [key,b] of buckets)if(now-b.t>60_000)buckets.delete(key)},60_000).unref();
+const pruneBuckets=()=>{const now=Date.now();for(const [key,b] of buckets)if(now-b.t>60_000)buckets.delete(key)};
+if(process.env.API_RUNTIME==='worker')app.use((req,res,next)=>{pruneBuckets();next()});
+else setInterval(pruneBuckets,60_000).unref();
 const rateLimit=(limit,windowMs)=> (req,res,next)=>{const k=req.baseUrl+':'+req.ip;const now=Date.now();const b=buckets.get(k)||{n:0,t:now};if(now-b.t>windowMs){b.n=0;b.t=now;}b.n++;buckets.set(k,b);if(b.n>limit)return res.status(429).json({error:'rate_limited'});next();};
 app.use(express.json({limit:'1mb'}));
 app.use('/orders',rateLimit(12,60_000));
@@ -117,4 +119,4 @@ app.post('/webhooks/paymob',async(req,res)=>{try{const payload=Buffer.isBuffer(r
  const applied=await supabase.rpc('apply_paymob_event_v18',{p_order_id:orderQuery.data.id,p_event_id:eventId+':'+status,p_status:status,p_amount_cents:Number(obj.amount_cents),p_currency:obj.currency,p_provider_order_id:String(obj.order?.id||''),p_payload:payload});if(applied.error)return res.status(409).json({error:'payment_update_failed'});
  res.json({received:true});}catch(e){res.status(500).json({error:'webhook_failed'});}});
 export {app};
-if(process.env.NODE_ENV!=='test')app.listen(process.env.PORT||8080,()=>console.log('API listening'));
+if(process.env.NODE_ENV!=='test'&&process.env.API_RUNTIME!=='worker')app.listen(process.env.PORT||8080,()=>console.log('API listening'));
