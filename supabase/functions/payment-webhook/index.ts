@@ -1,3 +1,4 @@
+import {paymobStatus} from '../../../shared/paymob-status.js';
 import { createClient } from 'npm:@supabase/supabase-js@2.117.2';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
@@ -69,7 +70,9 @@ Deno.serve(async (req) => {
   const expected = Number(order.total_amount ?? order.grand_total ?? order.total ?? order.amount ?? 0) * 100;
   if (!Number.isFinite(expected) || Math.round(expected) !== amountCents) return new Response('Amount mismatch', { status: 409 });
 
-  const status=obj.is_refunded ? (Number(obj.refunded_amount_cents||0)>=amountCents?'refunded':'partially_refunded') : obj.is_voided?'cancelled':obj.pending?'requires_action':obj.success===true?(obj.is_auth&&!obj.is_capture?'authorized':'paid'):'failed';
+  let status: string;
+  try { status=await paymobStatus(obj,{apiKey:Deno.env.get('PAYMOB_API_KEY'),baseUrl:Deno.env.get('PAYMOB_BASE_URL')}); }
+  catch { return new Response('Refund verification unavailable',{status:503}); }
   const applied=await admin.rpc('apply_paymob_event_v18',{p_order_id:order.id,p_event_id:providerEventId+':'+status,p_status:status,p_amount_cents:amountCents,p_currency:obj.currency,p_provider_order_id:providerOrderId,p_payload:body});
   if(applied.error)return new Response('Payment update failed',{status:409});
   return new Response('OK',{status:200});
