@@ -8,6 +8,10 @@ test('HTTP guards prevent unauthorized admin/payment/invoice access and invalid 
  assert.equal((await fetch(base+'/admin/products')).status,401);
  assert.equal((await fetch(base+'/admin/suppliers')).status,401);
  assert.equal((await fetch(base+'/admin/alerts')).status,401);
+ assert.equal((await fetch(base+'/admin/support')).status,401);
+ assert.equal((await fetch(base+'/admin/support/not-an-id',{method:'PATCH',headers:{'content-type':'application/json'},body:'{}'})).status,401);
+ assert.equal((await fetch(base+'/orders/not-an-id/support')).status,403);
+ assert.equal((await fetch(base+'/orders/not-an-id/support',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status,403);
  assert.equal((await fetch(base+'/admin/suppliers',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status,401);
  assert.equal((await fetch(base+'/catalog/search?q=phone')).status,503);
  assert.equal((await fetch(base+'/admin/pricing/preview',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})).status,401);
