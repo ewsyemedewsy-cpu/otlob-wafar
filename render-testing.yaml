@@ -16,6 +16,14 @@ services:
         value: production
       - key: ORDER_GOVERNORATES
         value: FAYOUM
+      - key: ORDER_DELIVERY_SCOPE
+        value: fayoum_cities
+      - key: STORE_CONTACT_PHONE
+        sync: false
+      - key: STORE_ADDRESS
+        sync: false
+      - key: STORE_HOURS
+        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SECRET_KEY
