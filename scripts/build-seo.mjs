@@ -1,0 +1,24 @@
+import fs from 'node:fs/promises';import path from 'node:path';import {pathToFileURL} from 'node:url';
+const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+export function renderProductPage(p,site){
+ const base=new URL(site);const url=new URL('products/'+encodeURIComponent(p.id)+'/',base).href;
+ const image=(()=>{try{const u=new URL(p.image_url);return u.protocol==='https:'?u.href:null}catch{return null}})();
+ const product={'@context':'https://schema.org','@type':'Product',name:p.title_ar,sku:p.sku,url,description:p.description_ar||p.title_ar,...(image?{image:[image]}:{}),offers:{'@type':'Offer',url,price:Number(p.retail_price).toFixed(2),priceCurrency:'EGP',availability:'https://schema.org/'+(p.stock_quantity===0?'OutOfStock':p.stock_quantity==null?'PreOrder':'InStock'),seller:{'@type':'Organization',name:'اطلب ووفر'}}};
+ const back=new URL('?product='+encodeURIComponent(p.id),base).href;
+ return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(p.title_ar)} | اطلب ووفر</title><meta name="description" content="${escape((p.description_ar||p.title_ar).slice(0,160))}"><link rel="canonical" href="${escape(url)}"><meta property="og:title" content="${escape(p.title_ar)}"><meta property="og:url" content="${escape(url)}"><meta property="og:type" content="product"><script type="application/ld+json">${JSON.stringify(product).replaceAll('<','\\u003c')}</script><style>body{font-family:Arial,sans-serif;max-width:780px;margin:40px auto;padding:20px;color:#19342d;line-height:1.8}img{max-width:100%;max-height:400px;object-fit:contain}a{color:#087e65}h1{line-height:1.4}.price{font-size:28px;font-weight:bold}</style></head><body><a href="${escape(base.href)}">اطلب ووفر</a><main><h1>${escape(p.title_ar)}</h1>${image?`<img src="${escape(image)}" alt="${escape(p.title_ar)}">`:''}<p>${escape(p.description_ar||'')}</p><p class="price">${escape(p.retail_price)} ج.م</p><p>${p.stock_quantity===0?'نفد المخزون':p.stock_quantity==null?'توريد عند الطلب — يُراجع التوفر قبل التأكيد':'متوفر بالمخزون'}</p><p>تُحسب تكلفة الشحن عند تأكيد الطلب.</p><a href="${escape(back)}">عرض المنتج والمقارنة في المتجر</a></main></body></html>`;
+}
+export async function buildSeo({directory='dist',site=process.env.STORE_PUBLIC_URL,catalogUrl=process.env.SEO_CATALOG_URL,fetchImpl=fetch}={}){
+ const indexFile=path.join(directory,'index.html');let index=await fs.readFile(indexFile,'utf8');
+ if(!site||!catalogUrl){index=index.replace('</head>','<meta name="robots" content="noindex,nofollow"></head>');await fs.writeFile(indexFile,index);await fs.writeFile(path.join(directory,'robots.txt'),'User-agent: *\nDisallow: /\n');return {indexed:false,count:0};}
+ const base=new URL(site);if(base.protocol!=='https:'||base.search||base.hash)throw Error('invalid_public_site_url');if(!base.pathname.endsWith('/'))base.pathname+='/';
+ const source=new URL(catalogUrl);if(source.protocol!=='https:')throw Error('https_catalog_required');
+ const response=await fetchImpl(source,{signal:AbortSignal.timeout(15000)});if(!response.ok)throw Error('seo_catalog_unavailable');
+ const products=await response.json();if(!Array.isArray(products))throw Error('invalid_seo_catalog');
+ const valid=products.filter(p=>/^[a-zA-Z0-9_-]{1,100}$/.test(p.id)&&typeof p.title_ar==='string'&&p.title_ar&&Number.isFinite(Number(p.retail_price))&&Number(p.retail_price)>0&&p.available===true);
+ const links=[];for(const p of valid){const folder=path.join(directory,'products',p.id);await fs.mkdir(folder,{recursive:true});await fs.writeFile(path.join(folder,'index.html'),renderProductPage(p,base.href));links.push(new URL('products/'+p.id+'/',base).href);}
+ const org={'@context':'https://schema.org','@type':'Organization',name:'اطلب ووفر',url:base.href,logo:new URL('brand-v2.svg',base).href};
+ index=index.replace('</head>',`<link rel="canonical" href="${escape(base.href)}"><script type="application/ld+json">${JSON.stringify(org).replaceAll('<','\\u003c')}</script></head>`).replace('</body>',`<nav aria-label="روابط المنتجات">${valid.map(p=>`<a href="${escape(new URL('products/'+p.id+'/',base).href)}">${escape(p.title_ar)}</a>`).join(' · ')}</nav></body>`);
+ await fs.writeFile(indexFile,index);await fs.writeFile(path.join(directory,'sitemap.xml'),`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${[base.href,...links].map(u=>`<url><loc>${escape(u)}</loc></url>`).join('')}</urlset>`);
+ await fs.writeFile(path.join(directory,'robots.txt'),`User-agent: *\nAllow: /\nSitemap: ${new URL('sitemap.xml',base).href}\n`);return {indexed:true,count:valid.length};
+}
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)console.log(JSON.stringify(await buildSeo()));

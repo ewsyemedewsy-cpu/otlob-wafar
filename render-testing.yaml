@@ -1,0 +1,52 @@
+services:
+  - type: web
+    name: otlob-wafar-testing-api
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: launch/preparation
+    autoDeployTrigger: off
+    buildCommand: npm ci --omit=dev
+    startCommand: npm run start:api
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      - key: ORDER_GOVERNORATES
+        value: FAYOUM
+      - key: ORDER_DELIVERY_SCOPE
+        value: fayoum_cities
+      - key: STORE_CONTACT_PHONE
+        sync: false
+      - key: STORE_ADDRESS
+        sync: false
+      - key: STORE_HOURS
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: ADMIN_API_KEY
+        generateValue: true
+      - key: PUBLIC_ORIGIN
+        sync: false
+      - key: PAYMOB_ONLINE_ENABLED
+        value: "false"
+      - key: APPROVED_SOURCE_FEEDS
+        value: "[]"
+  - type: web
+    name: otlob-wafar-testing-web
+    runtime: static
+    branch: launch/preparation
+    autoDeployTrigger: off
+    buildCommand: npm ci --include=dev && npm run build:web
+    staticPublishPath: apps/web/dist
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: WEB_BASE_PATH
+        value: /
+      - key: VITE_API_URL
+        sync: false

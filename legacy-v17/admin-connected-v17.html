@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Emad Store V14 — لوحة الإدارة</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f4f7f5;color:#17221e}
+.top{background:#10251d;color:#fff;padding:18px}.wrap{max-width:1400px;margin:auto;padding:18px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.card,.box{background:#fff;border-radius:14px;padding:16px;box-shadow:0 2px 10px #0000000b}
+.toolbar{display:flex;gap:9px;flex-wrap:wrap;margin:16px 0}.toolbar input,.toolbar select,.toolbar button,.panel input,.panel select,.panel textarea,.login input{padding:10px;border:1px solid #cdd8d3;border-radius:8px;background:#fff}
+button{cursor:pointer}.primary{background:#0b8a64!important;color:#fff;border:0!important}.danger{background:#a52d2d!important;color:#fff;border:0!important}
+.table{overflow:auto;background:#fff;border-radius:14px}.row{display:grid;grid-template-columns:120px 180px 100px 130px 130px 150px 250px;gap:10px;padding:12px;border-bottom:1px solid #edf0ee;align-items:center;min-width:1100px}.head{font-weight:bold;background:#eef3f0}
+.badge{display:inline-block;padding:6px 9px;border-radius:999px;background:#eaf2ee;font-size:12px}.actions button{margin:2px;padding:7px;border:1px solid #ccd6d1;background:#fff;border-radius:7px}
+.notice{padding:12px;border-radius:10px;background:#fff8d9;margin:14px 0}.muted{font-size:13px;color:#65736c}.ok{background:#e9f7ef}.err{background:#fdeaea}
+.modal{display:none;position:fixed;inset:0;background:#0007;align-items:center;justify-content:center;padding:15px;z-index:20}.panel{background:#fff;border-radius:16px;padding:20px;width:min(760px,96vw);max-height:92vh;overflow:auto}.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}.panel label{display:block;margin:9px 0 5px;font-weight:bold}.panel input,.panel select,.panel textarea{width:100%}.close{float:left;background:#eee;border:0;padding:8px;border-radius:8px}.detail{display:grid;grid-template-columns:1fr 1fr;gap:8px}.kv{background:#f6f8f7;padding:10px;border-radius:9px}.empty{text-align:center;padding:35px;color:#68756f}
+.login{max-width:520px;margin:45px auto}.login input{width:100%;margin:7px 0}.hidden{display:none!important}
+@media(max-width:800px){.grid{grid-template-columns:1fr 1fr}.two,.detail{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="top"><div class="wrap">
+<h2>Emad Store — لوحة الإدارة V14</h2>
+<div style="color:#c7d8d0">الطلبات · الشحن · AWB · Bosta · التسليم · مطالبات الشحن</div>
+</div></div>
+
+<div id="loginView" class="login box">
+<h2>دخول المسؤول</h2>
+<p class="muted">أدخل بيانات Supabase Auth. لا يتم تخزين service_role أو Bosta API Key في هذه الصفحة.</p>
+<label>Supabase Project URL</label><input id="sbUrl" placeholder="https://YOUR_PROJECT.supabase.co">
+<label>Publishable / Anon Key</label><input id="sbKey" type="password" placeholder="المفتاح العام فقط">
+<label>البريد</label><input id="email" type="email">
+<label>كلمة المرور</label><input id="password" type="password">
+<button class="primary" style="padding:11px 18px;border-radius:8px" onclick="login()">دخول</button>
+<p id="loginMsg" class="muted"></p>
+</div>
+
+<div id="app" class="wrap hidden">
+<div class="toolbar">
+<button class="primary" onclick="refresh()">تحديث الطلبات</button>
+<button onclick="logout()">تسجيل الخروج</button>
+<span id="who" class="muted"></span>
+</div>
+<div id="banner" class="notice">جاهز للاتصال.</div>
+<div class="grid">
+<div class="card"><b>إجمالي الطلبات المعروضة</b><h2 id="nAll">0</h2></div>
+<div class="card"><b>قيد التجهيز</b><h2 id="nProc">0</h2></div>
+<div class="card"><b>قيد الشحن</b><h2 id="nShip">0</h2></div>
+<div class="card"><b>مطالبات تحتاج مراجعة</b><h2 id="nClaim">0</h2></div>
+</div>
+<div class="toolbar">
+<input id="q" placeholder="بحث برقم الطلب أو اسم العميل أو الهاتف">
+<select id="status"><option value="">كل الحالات</option><option value="pending">جديد</option><option value="processing">قيد التجهيز</option><option value="shipped">قيد الشحن</option><option value="delivered">تم التسليم</option><option value="returned">مرتجع</option><option value="cancelled">ملغي</option><option value="delivery_failed">فشل التسليم</option></select>
+</div>
+<div class="table"><div class="row head"><div>الطلب</div><div>العميل</div><div>الإجمالي</div><div>الحالة</div><div>الشحن</div><div>AWB</div><div>إجراءات</div></div><div id="rows"><div class="empty">جارٍ التحميل…</div></div></div>
+</div>
+
+<div class="modal" id="modal"><div class="panel">
+<button class="close" onclick="closeModal()">إغلاق</button><h3 id="title">تفاصيل الطلب</h3>
+<div id="details" class="detail"></div>
+<div id="itemsBox"></div>
+<hr>
+<h3>الشحنة</h3>
+<div class="two"><div><label>شركة الشحن</label><input id="provider" value="bosta"></div><div><label>AWB</label><input id="awb"></div></div>
+<label>حالة الشحنة</label><select id="shipStatus"><option>pending</option><option>created</option><option>picked_up</option><option>in_transit</option><option>out_for_delivery</option><option>delivered</option><option>returned</option><option>cancelled</option><option>failed</option></select>
+<div style="margin-top:10px">
+<button class="primary" style="padding:10px;border-radius:8px" onclick="saveShipment()">حفظ الشحنة</button>
+<button class="primary" style="padding:10px;border-radius:8px" onclick="createBosta()">إنشاء شحنة Bosta</button>
+</div>
+<p id="tracking"></p>
+<hr>
+<h3>تغيير حالة الطلب</h3>
+<div class="two"><select id="orderStatus"><option>pending</option><option>processing</option><option>shipped</option><option>delivered</option><option>returned</option><option>cancelled</option><option>delivery_failed</option><option>paid</option></select><input id="statusNote" placeholder="ملاحظة"></div>
+<button class="primary" style="margin-top:10px;padding:10px;border-radius:8px" onclick="saveOrderStatus()">حفظ الحالة</button>
+<hr>
+<h3>مراجعة مطالبة تكلفة الشحن</h3>
+<div class="two"><div><label>القرار</label><select id="claimDecision"><option>approved</option><option>waived</option><option>disputed</option><option>paid</option></select></div><div><label>المبلغ</label><input id="claimAmount" type="number" min="0" step=".01"></div></div>
+<label>سبب/ملاحظة</label><textarea id="claimReason"></textarea>
+<button class="primary" style="margin-top:10px;padding:10px;border-radius:8px" onclick="saveClaim()">حفظ المراجعة</button>
+<p id="msg" class="muted"></p>
+</div></div>
+
+<script>
+let supabase=null, current=null, data=[];
+const ar={pending:'جديد',processing:'قيد التجهيز',shipped:'قيد الشحن',delivered:'تم التسليم',returned:'مرتجع',cancelled:'ملغي',delivery_failed:'فشل التسليم',paid:'مدفوع'};
+const $=id=>document.getElementById(id);
+function banner(t,kind=''){ $('banner').textContent=t; $('banner').className='notice '+kind; }
+function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+
+async function login(){
+ try{
+  const url=$('sbUrl').value.trim().replace(/\/$/,''); const key=$('sbKey').value.trim();
+  if(!url||!key) throw Error('أدخل Project URL والمفتاح العام.');
+  supabase=window.supabase.createClient(url,key);
+  const {data,error}=await supabase.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});
+  if(error) throw error;
+  $('loginView').classList.add('hidden'); $('app').classList.remove('hidden'); $('who').textContent=data.user.email||data.user.id;
+  await refresh();
+ }catch(e){$('loginMsg').textContent=e.message||String(e);$('loginMsg').className='muted err'}
+}
+async function logout(){if(supabase)await supabase.auth.signOut();location.reload();}
+async function call(fn, body={}, method='POST'){
+ const {data:{session}}=await supabase.auth.getSession();
+ if(!session?.access_token) throw Error('انتهت جلسة المسؤول.');
+ const res=await fetch(`${$('sbUrl').value.trim().replace(/\/$/,'')}/functions/v1/${fn}`,{
+  method,headers:{'Authorization':`Bearer ${session.access_token}`,'apikey':$('sbKey').value.trim(),'Content-Type':'application/json'},body:method==='GET'?undefined:JSON.stringify(body)
+ });
+ const d=await res.json().catch(()=>({}));
+ if(!res.ok||d.ok===false)throw Error(d.error||d.message||`HTTP ${res.status}`);
+ return d;
+}
+async function refresh(){
+ try{
+  const params=new URLSearchParams({action:'orders',q:$('q').value.trim(),status:$('status').value,limit:'100',offset:'0'});
+  const d=await call('admin-api?'+params.toString(),{},'GET');
+  data=(d.data||[]).map(x=>({...x,order:x.order_number,name:x.customer_name,total:Number(x.total||0),provider:x.bosta_awb?'Bosta':'—',awb:x.bosta_awb||''}));
+  render(); banner('تم تحميل الطلبات من Supabase.','ok');
+ }catch(e){banner(e.message||String(e),'err');$('rows').innerHTML='<div class="empty">تعذر تحميل الطلبات.</div>';}
+}
+function render(){
+ const a=data;
+ $('rows').innerHTML=a.length?a.map(x=>`<div class="row">
+ <div><b>${esc(x.order_number)}</b></div><div>${esc(x.customer_name)}</div><div>${x.total.toFixed(2)} ج</div>
+ <div><span class="badge">${esc(ar[x.status]||x.status)}</span></div><div>${esc(x.bosta_awb?'Bosta':'—')}</div><div>${esc(x.bosta_awb||'—')}</div>
+ <div class="actions"><button onclick="openDetails('${x.id}')">التفاصيل</button>
+ <button onclick="quickStatus('${x.id}','processing')">تجهيز</button><button onclick="quickStatus('${x.id}','shipped')">شحن</button><button onclick="quickStatus('${x.id}','delivered')">تسليم</button></div>
+ </div>`).join(''):'<div class="empty">لا توجد طلبات.</div>';
+ $('nAll').textContent=a.length;$('nProc').textContent=a.filter(x=>x.status==='processing').length;$('nShip').textContent=a.filter(x=>x.status==='shipped').length;
+ $('nClaim').textContent=a.filter(x=>['pending_review'].includes(x.shipping_claim_status)).length;
+}
+async function quickStatus(id,status){try{await call('admin-api?action=status',{order_id:id,status});await refresh()}catch(e){banner(e.message,'err')}}
+async function openDetails(id){
+ try{
+  const d=await call('admin-api?action=order&id='+encodeURIComponent(id),{},'GET'); current=d.order;
+  $('title').textContent='تفاصيل '+current.order_number;
+  $('details').innerHTML=`<div class="kv"><b>الطلب</b><br>${esc(current.order_number)}</div><div class="kv"><b>العميل</b><br>${esc(current.customer_name)}<br>${esc(current.whatsapp_phone)}</div>
+  <div class="kv"><b>المحافظة</b><br>${esc(current.governorate)}</div><div class="kv"><b>العنوان</b><br>${esc(current.address)}</div>
+  <div class="kv"><b>الدفع</b><br>${esc(current.payment_method)} / ${esc(current.payment_status)}</div><div class="kv"><b>الإجمالي</b><br>${Number(current.total||0).toFixed(2)} ج</div>`;
+  $('itemsBox').innerHTML='<h4>المنتجات</h4>'+((d.items||[]).map(i=>`<div class="kv">الكمية: ${i.quantity} — السعر: ${i.unit_price} ج</div>`).join('')||'<p class="muted">لا توجد عناصر.</p>');
+  const sh=d.shipment||{};$('provider').value=sh.provider||'bosta';$('awb').value=sh.provider_awb||current.bosta_awb||'';$('shipStatus').value=sh.status||'pending';
+  $('orderStatus').value=current.status;$('claimAmount').value=current.shipping_claim_amount||0;$('claimDecision').value=current.shipping_claim_status==='not_applicable'?'approved':(current.shipping_claim_status||'approved');
+  $('claimReason').value='';$('msg').textContent='';
+  $('tracking').innerHTML=sh.tracking_url?`<a href="${esc(sh.tracking_url)}" target="_blank" rel="noopener">فتح التتبع</a>`:'';
+  $('modal').style.display='flex';
+ }catch(e){banner(e.message,'err')}
+}
+function closeModal(){$('modal').style.display='none';current=null}
+async function saveShipment(){try{await call('admin-api?action=shipment',{order_id:current.id,provider:$('provider').value,awb:$('awb').value,status:$('shipStatus').value});$('msg').textContent='تم حفظ الشحنة.';await refresh()}catch(e){$('msg').textContent=e.message}}
+async function createBosta(){try{const d=await call('bosta-create-shipment',{order_id:current.id});$('awb').value=d.awb||'';$('tracking').innerHTML=d.trackingUrl?`<a href="${esc(d.trackingUrl)}" target="_blank" rel="noopener">فتح تتبع Bosta</a>`:'';$('msg').textContent=d.queued?'تم إدراج الشحنة للتنفيذ. حدّث الصفحة بعد تشغيل عامل الشحن.':'تم إنشاء الشحنة وإرجاع AWB.';await refresh()}catch(e){$('msg').textContent=e.message}}
+async function saveOrderStatus(){try{await call('admin-api?action=status',{order_id:current.id,status:$('orderStatus').value,note:$('statusNote').value});$('msg').textContent='تم تحديث حالة الطلب.';await refresh()}catch(e){$('msg').textContent=e.message}}
+async function saveClaim(){try{await call('admin-api?action=claim',{order_id:current.id,decision:$('claimDecision').value,amount:Number($('claimAmount').value||0),reason:$('claimReason').value});$('msg').textContent='تم حفظ مراجعة المطالبة.';await refresh()}catch(e){$('msg').textContent=e.message}}
+$('q').oninput=()=>{clearTimeout(window._t);window._t=setTimeout(refresh,350)};$('status').onchange=refresh;
+</script>
+</body></html>

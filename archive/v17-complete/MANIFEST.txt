@@ -1,0 +1,8 @@
+Emad Store V17
+- V15_paymob_migration.sql
+- V16_fulfillment_migration.sql
+- V17_hardening_migration.sql
+- checkout-v15-paymob.html
+- admin-connected-v17.html
+- Supabase Edge Functions: payment-create, payment-webhook, fulfillment-dispatch, bosta-webhook, bosta-create-shipment, whatsapp-dispatch, admin-api
+- README_V17.md
