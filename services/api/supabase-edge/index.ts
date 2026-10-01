@@ -21,11 +21,13 @@ const { app } = await import('../src/server.js');
 const router = express();
 router.use((req, res, next) => {
   if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
-    // Only catalog/directory/support edits. Checkout and dispatch stay closed.
+    // Authenticated management only. Checkout and dispatch stay closed.
     const path=req.path.replace(/^\/store-api-preview/, '');
     const catalogEdit=(req.method==='POST'&&['/admin/products','/admin/suppliers'].includes(path))||
       (['PATCH','DELETE'].includes(req.method)&&/^\/admin\/products\/[^/]+$/.test(path))||
-      (req.method==='PATCH'&&/^\/admin\/(suppliers|support)\/[^/]+$/.test(path));
+      (req.method==='PATCH'&&/^\/admin\/(suppliers|support)\/[^/]+$/.test(path))||
+      (req.method==='PATCH'&&/^\/admin\/orders\/[^/]+\/status$/.test(path))||
+      (req.method==='POST'&&path==='/admin/pricing/preview');
     if(catalogEdit)return requireAdmin(req,res,next);
     return res.status(405).json({ error: 'read_only_preview' });
   }

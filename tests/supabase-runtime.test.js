@@ -40,6 +40,10 @@ test('Supabase read-only adapter uses immutable platform secrets and preserves A
     assert.equal(invalid.status,400);
     assert.equal((await invalid.json()).error,'price_below_normal_floor');
     assert.equal((await request('/admin/orders/test/dispatch',{method:'POST',headers:{'x-admin-key':'runtime-test-admin'}})).status,405);
+    assert.equal((await request('/admin/orders/test/status',{method:'PATCH',headers:{'x-admin-key':'runtime-test-admin','content-type':'application/json'},body:'{}'})).status,400);
+    const quote=await request('/admin/pricing/preview',{method:'POST',headers:{'x-admin-key':'runtime-test-admin','content-type':'application/json'},body:JSON.stringify({baseCost:265.4,marketMin:300})});
+    assert.equal(quote.status,200);
+    assert.ok((await quote.json()).finalPrice>=280);
     assert.equal(environmentWrites, 0);
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));
