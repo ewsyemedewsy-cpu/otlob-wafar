@@ -1,0 +1,10 @@
+{
+  "imports": {
+    "express": "npm:express@5.2.1",
+    "helmet": "npm:helmet@8.3.0",
+    "cors": "npm:cors@2.8.6",
+    "crypto": "node:crypto",
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.117.2"
+  },
+  "compilerOptions": { "allowJs": true, "checkJs": false }
+}

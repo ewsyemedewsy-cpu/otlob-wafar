@@ -80,7 +80,7 @@ app.get('/admin/orders/:id/details',requireAdmin,async(req,res)=>{
  res.json({items:(items.data||[]).map(item=>({id:item.id,product_id:item.product_id,quantity:item.quantity,unit_price:item.unit_price,sku:item.product?.sku||null,title:item.product?.title_ar||null,size:item.product?.specifications?.size||null,color:item.product?.specifications?.color||null})),history:history.data||[],catalogDetailsAreCurrent:true});
  }catch{res.status(503).json({error:'order_details_unavailable'});}
 });
-app.get('/capabilities',(req,res)=>{res.set('Cache-Control','no-store');res.json({deliveryGovernorates:allowedGovernorates,deliveryAreas:allowedAreas,onlinePayment:process.env.PAYMOB_ONLINE_ENABLED==='true'&&!!process.env.PAYMOB_SECRET_KEY&&!!process.env.PAYMOB_PUBLIC_KEY&&!!process.env.PAYMOB_INTEGRATION_IDS&&!!process.env.PAYMOB_NOTIFICATION_URL&&!!process.env.PAYMOB_REDIRECTION_URL})});
+app.get('/capabilities',(req,res)=>{res.set('Cache-Control','no-store');res.json({checkoutEnabled:process.env.CHECKOUT_ENABLED!=='false',deliveryGovernorates:allowedGovernorates,deliveryAreas:allowedAreas,onlinePayment:process.env.PAYMOB_ONLINE_ENABLED==='true'&&!!process.env.PAYMOB_SECRET_KEY&&!!process.env.PAYMOB_PUBLIC_KEY&&!!process.env.PAYMOB_INTEGRATION_IDS&&!!process.env.PAYMOB_NOTIFICATION_URL&&!!process.env.PAYMOB_REDIRECTION_URL})});
 app.get('/health',(req,res)=>res.json({ok:true,service:'emad-store-api',time:new Date().toISOString()}));
 app.get('/products',async(req,res)=>{try{const {data,error}=await supabase.from('products').select('id,sku,title_ar,category_id,image_url,retail_price,available,description_ar,stock_quantity,specifications,supplier_id,category:categories(slug)').eq('available',true).order('created_at',{ascending:false});if(error)throw error;res.json((data||[]).map(({category,supplier_id,...p})=>({...p,fulfillment_source:supplier_id?'supplier':'owned',specifications:Object.fromEntries(Object.entries(p.specifications||{}).filter(([k,v])=>['brand','model','color','size','condition','warranty','contents','model_key','gallery_urls'].includes(k)&&['string','number'].includes(typeof v))),category_slug:category?.slug})));}catch(e){res.status(500).json({error:'products_failed'});}});
 app.get('/products/:id/compare',async(req,res)=>{try{
@@ -112,7 +112,7 @@ app.post('/delivery-interest',async(req,res)=>{
  if(!Object.hasOwn(ship,region)||allowedGovernorates.includes(region)||!key||key.length<16||key.length>200)return res.status(400).json({error:'invalid_delivery_interest'});
  try{const {error}=await supabase.rpc('record_delivery_demand',{p_region:region,p_source:'customer_interest',p_request_key:key});if(error)throw error;res.status(202).json({recorded:true,orderCreated:false})}catch{res.status(503).json({error:'delivery_interest_unavailable'})}
 });
-app.post('/orders',async(req,res)=>{try{
+app.post('/orders',async(req,res)=>{if(process.env.CHECKOUT_ENABLED==='false')return res.status(503).json({error:'checkout_not_enabled'});try{
  const {customer_name,whatsapp_phone,governorate,address,payment_method,items}=req.body;
  if(payment_method==='wallet'&&process.env.PAYMOB_ONLINE_ENABLED!=='true')return res.status(503).json({error:'online_payment_not_enabled'});const idem=req.get('Idempotency-Key');if(!idem||idem.length<16||idem.length>200)return res.status(400).json({error:'invalid_idempotency_key'});
  if(!customer_name||!address||!Array.isArray(items)||!items.length||items.length>30||items.some(x=>!Number.isInteger(x.quantity)||x.quantity<1||x.quantity>100))return res.status(400).json({error:'invalid_order'});

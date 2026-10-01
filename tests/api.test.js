@@ -7,6 +7,10 @@ test('HTTP guards prevent unauthorized admin/payment/invoice access and invalid 
  assert.equal((await fetch(base+'/health')).status,200);
  const capabilities=await(await fetch(base+'/capabilities')).json();assert.equal(capabilities.onlinePayment,false);
  assert.deepEqual(capabilities.deliveryGovernorates,['FAYOUM']);
+ process.env.CHECKOUT_ENABLED='false';
+ assert.equal((await(await fetch(base+'/capabilities')).json()).checkoutEnabled,false);
+ const closed=await fetch(base+'/orders',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});assert.equal(closed.status,503);assert.equal((await closed.json()).error,'checkout_not_enabled');
+ delete process.env.CHECKOUT_ENABLED;
  const outsideRegion=await fetch(base+'/orders',{method:'POST',headers:{'content-type':'application/json','Idempotency-Key':'test-outside-region-key'},body:JSON.stringify({customer_name:'عميل اختبار',address:'عنوان اختبار',governorate:'CAIRO',payment_method:'cod',items:[{product_id:'00000000-0000-0000-0000-000000000001',quantity:1}]})});
  assert.equal(outsideRegion.status,400);assert.equal((await outsideRegion.json()).error,'delivery_region_unavailable');
  assert.equal((await fetch(base+'/admin/products')).status,401);
