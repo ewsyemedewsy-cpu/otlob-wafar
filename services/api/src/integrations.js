@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import {Buffer} from 'node:buffer';
 
 export function verifyPaymobTransactionHmac(obj, secret, supplied){
   if(!secret || !supplied || !obj) return false;
