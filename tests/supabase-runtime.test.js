@@ -32,6 +32,9 @@ test('Supabase read-only adapter uses immutable platform secrets and preserves A
       assert.deepEqual(await response.json(), {error:'read_only_preview'});
     }
     assert.equal((await request('/admin/orders')).status, 401);
+    const deniedTracking=await request('/orders/not-an-id/status',{headers:{Authorization:'Bearer invoice:wrong'}});
+    assert.equal(deniedTracking.status,403);
+    assert.deepEqual(await deniedTracking.json(),{error:'forbidden'});
     assert.equal((await request('/admin/products',{method:'POST'})).status,401);
     const invalid=await request('/admin/products',{method:'POST',headers:{'x-admin-key':'runtime-test-admin','content-type':'application/json'},body:JSON.stringify({sku:'TEST',title_ar:'اختبار',supplier_cost:265,retail_price:279.99,specifications:{packaging_cost:.4}})});
     assert.equal(invalid.status,400);
