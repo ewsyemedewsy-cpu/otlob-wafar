@@ -6,7 +6,7 @@ test('Supabase read-only adapter uses immutable platform secrets and preserves A
   const originalDeno = globalThis.Deno;
   let environmentWrites = 0;
   globalThis.Deno = { env: {
-    toObject: () => ({ ...originalEnv, NODE_ENV: 'test', SUPABASE_URL: 'http://127.0.0.1:1',
+    toObject: () => ({ ...originalEnv, NODE_ENV: 'test', ADMIN_API_KEY:'runtime-test-admin', SUPABASE_URL: 'http://127.0.0.1:1',
       SUPABASE_SECRET_KEYS: JSON.stringify({ default: 'server-only-fake-secret' }) }),
     set: () => { environmentWrites++; throw Error('platform_environment_is_read_only'); }
   } };
@@ -16,7 +16,7 @@ test('Supabase read-only adapter uses immutable platform secrets and preserves A
     server = router.listen(0, '127.0.0.1');
     await new Promise(resolve => server.once('listening', resolve));
     const base = `http://127.0.0.1:${server.address().port}/store-api-preview`;
-    const request = async (path, options={}) => { try { return await fetch(base + path, {...options, headers:{Connection:'close'}}); } catch(error) { throw new Error(`${options.method || 'GET'} ${path}: ${error.message}`, {cause:error}); } };
+    const request = async (path, options={}) => { try { return await fetch(base + path, {...options, headers:{...options.headers,Connection:'close'}}); } catch(error) { throw new Error(`${options.method || 'GET'} ${path}: ${error.message}`, {cause:error}); } };
     const health = await request('/health');
     assert.equal(health.status, 200);
     assert.equal((await health.json()).ok, true);
@@ -32,6 +32,11 @@ test('Supabase read-only adapter uses immutable platform secrets and preserves A
       assert.deepEqual(await response.json(), {error:'read_only_preview'});
     }
     assert.equal((await request('/admin/orders')).status, 401);
+    assert.equal((await request('/admin/products',{method:'POST'})).status,401);
+    const invalid=await request('/admin/products',{method:'POST',headers:{'x-admin-key':'runtime-test-admin','content-type':'application/json'},body:JSON.stringify({sku:'TEST',title_ar:'اختبار',supplier_cost:265,retail_price:279.99,specifications:{packaging_cost:.4}})});
+    assert.equal(invalid.status,400);
+    assert.equal((await invalid.json()).error,'price_below_normal_floor');
+    assert.equal((await request('/admin/orders/test/dispatch',{method:'POST',headers:{'x-admin-key':'runtime-test-admin'}})).status,405);
     assert.equal(environmentWrites, 0);
   } finally {
     if (server) await new Promise(resolve => server.close(resolve));

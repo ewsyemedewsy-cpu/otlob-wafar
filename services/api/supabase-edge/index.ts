@@ -1,7 +1,8 @@
-// Read-only staging preview. Admin/invoice routes retain custom authentication.
+// Closed-checkout staging preview with authenticated catalog/directory edits.
 // Gateway JWT verification is disabled to allow the public catalog reads.
 import process from 'node:process';
 import express from 'express';
+import {requireAdmin} from '../src/admin.js';
 // Edge Runtime exposes environment variables read-only. Configure the Node shim
 // with a separate object; never call Deno.env.set or mutate platform secrets.
 const platformEnv = Deno.env.toObject();
@@ -20,6 +21,12 @@ const { app } = await import('../src/server.js');
 const router = express();
 router.use((req, res, next) => {
   if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    // Only catalog/directory/support edits. Checkout and dispatch stay closed.
+    const path=req.path.replace(/^\/store-api-preview/, '');
+    const catalogEdit=(req.method==='POST'&&['/admin/products','/admin/suppliers'].includes(path))||
+      (['PATCH','DELETE'].includes(req.method)&&/^\/admin\/products\/[^/]+$/.test(path))||
+      (req.method==='PATCH'&&/^\/admin\/(suppliers|support)\/[^/]+$/.test(path));
+    if(catalogEdit)return requireAdmin(req,res,next);
     return res.status(405).json({ error: 'read_only_preview' });
   }
   next();
